@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+@AGENTS.md
+
 ## Issue Tracking
 
 Work for this repo is tracked in Jira via the Atlassian MCP server.
