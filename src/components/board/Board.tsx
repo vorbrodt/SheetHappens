@@ -1,19 +1,15 @@
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { Cell } from './Cell';
 import { CellData } from './types';
-
-const BOARD_SIZE = 8;
-const BOARD_HORIZONTAL_PADDING = 16;
+import { useBoardLayout } from './useBoardLayout';
 
 interface BoardProps {
   cells: CellData[][];
 }
 
 export function Board({ cells }: BoardProps) {
-  const { width } = useWindowDimensions();
-  const boardWidth = width - BOARD_HORIZONTAL_PADDING * 2;
-  const cellSize = boardWidth / BOARD_SIZE;
+  const { boardWidth, cellSize } = useBoardLayout();
 
   return (
     <View style={[styles.board, { width: boardWidth, height: boardWidth }]}>

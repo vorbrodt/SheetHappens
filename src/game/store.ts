@@ -6,6 +6,7 @@ import { Direction, Entity, Grid, MatchConfig, PlayerId } from './types';
 
 export const PLAYER_ID: PlayerId = 'player';
 
+const PLAYER_COLOR = '#EC4899';
 const BOT_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7'];
 
 const DEFAULT_CONFIG: MatchConfig = { durationSeconds: 60, botCount: 2 };
@@ -13,7 +14,7 @@ const DEFAULT_CONFIG: MatchConfig = { durationSeconds: 60, botCount: 2 };
 function createEntities(botCount: number): Entity[] {
   const { player, bots } = getStartingPositions(botCount);
   return [
-    { id: PLAYER_ID, color: '#ffffff', position: player },
+    { id: PLAYER_ID, color: PLAYER_COLOR, position: player },
     ...bots.map((position, index) => ({
       id: `bot-${index + 1}`,
       color: BOT_COLORS[index],
