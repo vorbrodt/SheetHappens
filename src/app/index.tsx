@@ -23,6 +23,11 @@ export default function MenuScreen() {
           <Text style={styles.buttonText}>Play</Text>
         </Pressable>
       </Link>
+      <Link href="/jelly-preview" asChild>
+        <Pressable style={styles.secondaryButton}>
+          <Text style={styles.secondaryButtonText}>Jelly Preview</Text>
+        </Pressable>
+      </Link>
     </View>
   );
 }
@@ -53,6 +58,18 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4f46e5',
+  },
+  secondaryButtonText: {
+    color: '#4f46e5',
     fontSize: 16,
     fontWeight: '600',
   },
