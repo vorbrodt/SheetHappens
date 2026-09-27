@@ -1,10 +1,13 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
+import { Board } from '../components/board/Board';
+import { mockBoardData } from '../components/board/mockBoardData';
+
 export default function GameScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Game</Text>
+      <Board cells={mockBoardData} />
       <Pressable style={styles.button} onPress={() => router.back()}>
         <Text style={styles.buttonText}>Back to Menu</Text>
       </Pressable>
@@ -19,10 +22,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#fff',
     gap: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '600',
   },
   button: {
     paddingHorizontal: 24,
