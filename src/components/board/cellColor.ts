@@ -1,6 +1,3 @@
-import { PLAYER_COLORS } from './playerColors';
-import { PlayerId } from './types';
-
 const NEUTRAL_CELL_COLOR = '#F1F2F4';
 
 // Even at intensity 0, an owned cell should show a faint tint rather than disappear.
@@ -14,13 +11,12 @@ function hexToRgb(hex: string) {
   return { r, g, b };
 }
 
-export function getCellColor(owner: PlayerId | null, intensity: number): string {
-  const baseColor = owner ? PLAYER_COLORS[owner] : undefined;
-  if (!baseColor) {
+export function getCellColor(ownerColor: string | null | undefined, intensity: number): string {
+  if (!ownerColor) {
     return NEUTRAL_CELL_COLOR;
   }
 
-  const { r, g, b } = hexToRgb(baseColor);
+  const { r, g, b } = hexToRgb(ownerColor);
   const clampedIntensity = Math.min(100, Math.max(0, intensity));
   const alpha = MIN_INTENSITY_ALPHA + (clampedIntensity / 100) * (1 - MIN_INTENSITY_ALPHA);
 

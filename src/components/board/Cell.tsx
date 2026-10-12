@@ -1,24 +1,25 @@
+import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { getCellColor } from './cellColor';
-import { PlayerId } from './types';
 
 interface CellProps {
-  owner: PlayerId | null;
+  ownerColor: string | null;
   intensity: number;
   size: number;
 }
 
-export function Cell({ owner, intensity, size }: CellProps) {
+// Memoized so a paint tap only re-renders the one cell that changed.
+export const Cell = memo(function Cell({ ownerColor, intensity, size }: CellProps) {
   return (
     <View
       style={[
         styles.cell,
-        { width: size, height: size, backgroundColor: getCellColor(owner, intensity) },
+        { width: size, height: size, backgroundColor: getCellColor(ownerColor, intensity) },
       ]}
     />
   );
-}
+});
 
 const styles = StyleSheet.create({
   cell: {
