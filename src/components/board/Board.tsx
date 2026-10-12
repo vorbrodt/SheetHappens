@@ -1,14 +1,15 @@
 import { StyleSheet, View } from 'react-native';
 
 import { Cell } from './Cell';
-import { CellData } from './types';
+import { CellData, PlayerId } from './types';
 import { useBoardLayout } from './useBoardLayout';
 
 interface BoardProps {
   cells: CellData[][];
+  ownerColors: Record<PlayerId, string>;
 }
 
-export function Board({ cells }: BoardProps) {
+export function Board({ cells, ownerColors }: BoardProps) {
   const { boardWidth, cellSize } = useBoardLayout();
 
   return (
@@ -16,7 +17,12 @@ export function Board({ cells }: BoardProps) {
       {cells.map((row, rowIndex) => (
         <View key={rowIndex} style={styles.row}>
           {row.map((cell, colIndex) => (
-            <Cell key={colIndex} owner={cell.owner} intensity={cell.intensity} size={cellSize} />
+            <Cell
+              key={colIndex}
+              ownerColor={cell.owner ? (ownerColors[cell.owner] ?? null) : null}
+              intensity={cell.intensity}
+              size={cellSize}
+            />
           ))}
         </View>
       ))}
