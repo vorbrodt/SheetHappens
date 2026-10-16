@@ -1,6 +1,6 @@
 import { createRef, RefObject, useCallback, useEffect, useMemo, useState } from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { GestureDetector } from 'react-native-gesture-handler';
 
 import { Board } from '../components/board/Board';
@@ -8,21 +8,43 @@ import { BoardEntityLayer, BoardEntityViewModel } from '../components/board/Boar
 import { useBotController } from '../components/bots/useBotController';
 import { useSwipeMovement } from '../components/gestures/useSwipeMovement';
 import { IntensityReadout } from '../components/hud/IntensityReadout';
+import { MatchHud } from '../components/hud/MatchHud';
 import { PaintButton } from '../components/hud/PaintButton';
 import { JellyHandle } from '../components/jelly/types';
-import { PLAYER_ID, useGameStore } from '../game/store';
+import { useMatchClock } from '../components/match/useMatchClock';
+import { cellsOwned, score } from '../game/rules';
+import { DEFAULT_CONFIG, PLAYER_ID, useGameStore } from '../game/store';
 import { Direction, PlayerId } from '../game/types';
 
+function parseDuration(param: string | undefined): number {
+  const seconds = Number(param);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_CONFIG.durationSeconds;
+}
+
 export default function GameScreen() {
+  const { duration } = useLocalSearchParams<{ duration?: string }>();
   const grid = useGameStore((s) => s.grid);
   const entities = useGameStore((s) => s.entities);
+  const remainingMs = useGameStore((s) => s.remainingMs);
   // One stable ref per entity id, so jellies keep their handle across re-renders.
   const [jellyRefs] = useState(() => new Map<PlayerId, RefObject<JellyHandle | null>>());
   const [surfaceHeight, setSurfaceHeight] = useState(0);
 
   useEffect(() => {
-    useGameStore.getState().initMatch();
-  }, []);
+    useGameStore.getState().initMatch({ durationSeconds: parseDuration(duration) });
+  }, [duration]);
+
+  // Reacts to the moment the match ends rather than to the status itself, so a stale "ended"
+  // left in the store by the previous match never skips this one.
+  useEffect(
+    () =>
+      useGameStore.subscribe((state, prev) => {
+        if (state.status === 'ended' && prev.status !== 'ended') {
+          router.replace('/results');
+        }
+      }),
+    []
+  );
 
   const jellyRefFor = (id: PlayerId) => {
     let ref = jellyRefs.get(id);
@@ -36,6 +58,7 @@ export default function GameScreen() {
   const getJelly = useCallback((id: PlayerId) => jellyRefs.get(id)?.current ?? null, [jellyRefs]);
 
   useBotController(getJelly);
+  useMatchClock();
 
   const handleMove = useCallback(
     (direction: Direction) => {
@@ -49,6 +72,7 @@ export default function GameScreen() {
   );
 
   const handlePaint = useCallback(() => {
+    if (useGameStore.getState().status !== 'playing') return;
     useGameStore.getState().paint(PLAYER_ID);
     getJelly(PLAYER_ID)?.playPaint();
   }, [getJelly]);
@@ -72,9 +96,19 @@ export default function GameScreen() {
     ref: jellyRefFor(e.id),
   }));
   const currentCell = player ? grid[player.position.row][player.position.col] : null;
+  const playerScore = useMemo(() => score(grid, PLAYER_ID), [grid]);
+  const playerCells = useMemo(() => cellsOwned(grid, PLAYER_ID), [grid]);
 
   return (
     <View style={styles.container}>
+      {player && (
+        <MatchHud
+          remainingMs={remainingMs}
+          score={playerScore}
+          cellsOwned={playerCells}
+          color={player.color}
+        />
+      )}
       <View style={styles.playArea}>
         <GestureDetector gesture={gesture}>
           <View style={styles.gestureSurface} onLayout={handleSurfaceLayout}>

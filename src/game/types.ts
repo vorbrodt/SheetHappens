@@ -24,3 +24,5 @@ export interface MatchConfig {
   durationSeconds: number;
   botCount: number;
 }
+
+export type MatchStatus = 'playing' | 'paused' | 'ended';
