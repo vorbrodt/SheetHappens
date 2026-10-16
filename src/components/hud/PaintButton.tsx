@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SymbolView } from 'expo-symbols';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -12,6 +13,17 @@ import Animated, {
 const BUTTON_SIZE = 72;
 const ICON_SIZE = 34;
 const PRESSED_SCALE = 0.88;
+
+// Fire-and-forget: the promise is never awaited so the paint itself is never delayed, and a
+// failed haptic (e.g. Low Power Mode on iOS) is silently ignored. Android uses the system haptic
+// constants rather than impactAsync, which falls back to the cruder Vibrator API there.
+function paintHaptic() {
+  if (Platform.OS === 'ios') {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  } else if (Platform.OS === 'android') {
+    Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Keyboard_Tap).catch(() => {});
+  }
+}
 
 interface PaintButtonProps {
   color: string;
@@ -30,6 +42,7 @@ export function PaintButton({ color, onPaint }: PaintButtonProps) {
         .onBegin(() => {
           scale.set(withTiming(PRESSED_SCALE, { duration: 60 }));
           onPaint();
+          paintHaptic();
         })
         .onFinalize(() => {
           scale.set(withSpring(1, { damping: 10, stiffness: 220 }));
