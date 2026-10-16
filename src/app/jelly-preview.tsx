@@ -3,10 +3,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { Jelly } from '../components/jelly/Jelly';
-import { Direction, JellyHandle } from '../components/jelly/types';
+import { Direction, JellyHandle, JellyRenderer } from '../components/jelly/types';
 
 const PREVIEW_COLORS = ['#EC4899', '#2563EB', '#DC2626', '#16A34A'];
-const JELLY_SIZE = 90;
+const JELLY_SIZE = 72;
+const RENDERERS: { renderer: JellyRenderer; label: string }[] = [
+  { renderer: 'procedural', label: 'Procedural (Reanimated)' },
+  { renderer: 'lottie', label: 'Lottie idle (KAN-16 prototype)' },
+];
 
 export default function JellyPreviewScreen() {
   const jellyRefs = useRef<(JellyHandle | null)[]>([]);
@@ -21,18 +25,24 @@ export default function JellyPreviewScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.jellyRow}>
-        {PREVIEW_COLORS.map((color, index) => (
-          <Jelly
-            key={color}
-            ref={(handle) => {
-              jellyRefs.current[index] = handle;
-            }}
-            color={color}
-            size={JELLY_SIZE}
-          />
-        ))}
-      </View>
+      {RENDERERS.map(({ renderer, label }, rowIndex) => (
+        <View key={renderer} style={styles.rendererRow}>
+          <Text style={styles.rendererLabel}>{label}</Text>
+          <View style={styles.jellyRow}>
+            {PREVIEW_COLORS.map((color, index) => (
+              <Jelly
+                key={color}
+                ref={(handle) => {
+                  jellyRefs.current[rowIndex * PREVIEW_COLORS.length + index] = handle;
+                }}
+                color={color}
+                size={JELLY_SIZE}
+                renderer={renderer}
+              />
+            ))}
+          </View>
+        </View>
+      ))}
 
       <View style={styles.dPad}>
         <PreviewButton label="▲" onPress={() => triggerMove('up')} />
@@ -69,6 +79,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#fff',
     gap: 24,
+  },
+  rendererRow: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  rendererLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4B5563',
   },
   jellyRow: {
     flexDirection: 'row',
