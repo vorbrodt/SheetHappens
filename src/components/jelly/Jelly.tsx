@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -11,12 +12,16 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { JellyFace } from './JellyFace';
-import { Direction, JellyHandle } from './types';
+import { JellyLottieBody, LOTTIE_BODY_SUPPORTED } from './JellyLottieBody';
+import { Direction, JellyHandle, JellyRenderer } from './types';
 
 interface JellyProps {
   color: string;
   size: number;
   showFace?: boolean;
+  // 'lottie' swaps the body and its idle wobble for the jelly-idle asset (KAN-16 prototype).
+  // Move and paint reactions stay procedural either way.
+  renderer?: JellyRenderer;
 }
 
 const IDLE_SQUISH = 0.035;
@@ -25,7 +30,7 @@ const MOVE_SQUASH = 0.16;
 const PAINT_SQUISH = 0.18;
 
 export const Jelly = forwardRef<JellyHandle, JellyProps>(function Jelly(
-  { color, size, showFace = true },
+  { color, size, showFace = true, renderer = 'procedural' },
   ref
 ) {
   const idleT = useSharedValue(0);
@@ -33,14 +38,21 @@ export const Jelly = forwardRef<JellyHandle, JellyProps>(function Jelly(
   const moveScaleY = useSharedValue(1);
   const paintScale = useSharedValue(1);
   const [lastDirection, setLastDirection] = useState<Direction>('down');
+  const lottieBody = renderer === 'lottie' && LOTTIE_BODY_SUPPORTED;
 
   useEffect(() => {
+    // The Lottie asset carries its own idle loop.
+    if (lottieBody) {
+      return;
+    }
+
     idleT.value = withRepeat(
       withTiming(1, { duration: 900, easing: Easing.inOut(Easing.sin) }),
       -1,
       true
     );
-  }, [idleT]);
+    return () => cancelAnimation(idleT);
+  }, [idleT, lottieBody]);
 
   useImperativeHandle(
     ref,
@@ -76,7 +88,7 @@ export const Jelly = forwardRef<JellyHandle, JellyProps>(function Jelly(
   );
 
   const animatedStyle = useAnimatedStyle(() => {
-    const idleWobble = (idleT.value - 0.5) * 2 * IDLE_SQUISH;
+    const idleWobble = lottieBody ? 0 : (idleT.value - 0.5) * 2 * IDLE_SQUISH;
 
     return {
       transform: [
@@ -90,10 +102,12 @@ export const Jelly = forwardRef<JellyHandle, JellyProps>(function Jelly(
     <Animated.View
       style={[
         styles.jelly,
-        { width: size, height: size, borderRadius: size * 0.38, backgroundColor: color },
+        { width: size, height: size },
+        !lottieBody && { borderRadius: size * 0.38, backgroundColor: color },
         animatedStyle,
       ]}
     >
+      {lottieBody && <JellyLottieBody color={color} />}
       {showFace && <JellyFace size={size} direction={lastDirection} />}
     </Animated.View>
   );
