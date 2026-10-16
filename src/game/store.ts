@@ -12,6 +12,9 @@ const BOT_COLORS = ['#f97316', '#3b82f6', '#22c55e', '#eab308', '#a855f7'];
 
 export const DEFAULT_CONFIG: MatchConfig = { durationSeconds: 60, botCount: 2 };
 
+// Length of the 3-2-1 countdown that runs before every match.
+export const COUNTDOWN_MS = 3_000;
+
 function createEntities(botCount: number): Entity[] {
   const { player, bots } = getStartingPositions(botCount);
   return [
@@ -30,11 +33,16 @@ interface GameStore {
   config: MatchConfig;
   status: MatchStatus;
   remainingMs: number;
+  // Time left on the pre-match countdown; 0 once the match has started.
+  countdownMs: number;
+  // Starts a fresh match in the countdown phase.
   initMatch: (config?: Partial<MatchConfig>) => void;
-  // Moves and paints are ignored unless the match is playing, so a paused or ended match is frozen.
+  // Moves and paints are ignored unless the match is playing, so a counting-down, paused or ended
+  // match is frozen.
   move: (entityId: PlayerId, direction: Direction) => void;
   paint: (entityId: PlayerId) => void;
-  // Counts the clock down while playing and ends the match when it reaches 0.
+  // Runs the pre-match countdown and then starts play; while playing, counts the match clock down
+  // and ends the match when it reaches 0.
   tick: (deltaMs: number) => void;
   setPaused: (paused: boolean) => void;
 }
@@ -43,8 +51,9 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   grid: createEmptyGrid(),
   entities: createEntities(DEFAULT_CONFIG.botCount),
   config: DEFAULT_CONFIG,
-  status: 'playing',
+  status: 'countdown',
   remainingMs: DEFAULT_CONFIG.durationSeconds * 1000,
+  countdownMs: COUNTDOWN_MS,
 
   initMatch: (config) => {
     const nextConfig = { ...get().config, ...config };
@@ -52,8 +61,9 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       grid: createEmptyGrid(),
       entities: createEntities(nextConfig.botCount),
       config: nextConfig,
-      status: 'playing',
+      status: 'countdown',
       remainingMs: nextConfig.durationSeconds * 1000,
+      countdownMs: COUNTDOWN_MS,
     });
   },
 
@@ -68,14 +78,23 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   },
 
   tick: (deltaMs) => {
-    if (get().status !== 'playing') return;
+    const { status } = get();
+    if (status === 'countdown') {
+      const countdownMs = Math.max(0, get().countdownMs - deltaMs);
+      set({ countdownMs, status: countdownMs === 0 ? 'playing' : 'countdown' });
+      return;
+    }
+    if (status !== 'playing') return;
     const remainingMs = Math.max(0, get().remainingMs - deltaMs);
     set({ remainingMs, status: remainingMs === 0 ? 'ended' : 'playing' });
   },
 
   setPaused: (paused) => {
     const { status } = get();
-    if (paused && status === 'playing') set({ status: 'paused' });
-    if (!paused && status === 'paused') set({ status: 'playing' });
+    if (paused && (status === 'playing' || status === 'countdown')) set({ status: 'paused' });
+    // A match paused before it started resumes its countdown rather than jumping straight to play.
+    if (!paused && status === 'paused') {
+      set({ status: get().countdownMs > 0 ? 'countdown' : 'playing' });
+    }
   },
 }));

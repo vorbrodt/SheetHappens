@@ -7,9 +7,10 @@ import { useGameStore } from '../../game/store';
 export const CLOCK_TICK_MS = 100;
 
 /**
- * Runs the match countdown while the calling screen is mounted. Time is measured from wall-clock
- * deltas, so a late interval never slows the clock down. The match pauses whenever the app leaves
- * the foreground and resumes where it left off when it comes back.
+ * Runs the pre-match countdown and then the match clock while the calling screen is mounted. Time
+ * is measured from wall-clock deltas, so a late interval never slows the clock down. The match
+ * pauses whenever the app leaves the foreground (during the countdown too) and resumes where it
+ * left off when it comes back.
  */
 export function useMatchClock() {
   useEffect(() => {

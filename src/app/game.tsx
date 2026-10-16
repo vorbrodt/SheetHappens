@@ -11,6 +11,7 @@ import { IntensityReadout } from '../components/hud/IntensityReadout';
 import { MatchHud } from '../components/hud/MatchHud';
 import { PaintButton } from '../components/hud/PaintButton';
 import { JellyHandle } from '../components/jelly/types';
+import { CountdownOverlay } from '../components/match/CountdownOverlay';
 import { useMatchClock } from '../components/match/useMatchClock';
 import { MatchParams, parseMatchParams } from '../components/menu/matchConfig';
 import { cellsOwned, score } from '../game/rules';
@@ -127,6 +128,7 @@ export default function GameScreen() {
       <Pressable style={styles.button} onPress={() => router.back()}>
         <Text style={styles.buttonText}>Back to Menu</Text>
       </Pressable>
+      <CountdownOverlay />
     </View>
   );
 }

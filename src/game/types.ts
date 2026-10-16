@@ -25,4 +25,4 @@ export interface MatchConfig {
   botCount: number;
 }
 
-export type MatchStatus = 'playing' | 'paused' | 'ended';
+export type MatchStatus = 'countdown' | 'playing' | 'paused' | 'ended';
