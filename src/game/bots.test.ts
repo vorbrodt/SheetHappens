@@ -1,21 +1,12 @@
 import { BOT_MOVE_INTERVAL_MS, BOT_PAINT_INTERVAL_MS, chooseBotDirection } from './bots';
+import { createEntity } from './engine';
 import { getStartingPositions } from './placement';
+import { createRng } from './random';
 import { BOARD_SIZE, canMove, cellsOwned, createEmptyGrid, move, paint } from './rules';
 import { Entity, Position } from './types';
 
 function makeEntities(entries: { id: string; position: Position }[]): Entity[] {
-  return entries.map(({ id, position }) => ({ id, color: '#000000', position }));
-}
-
-// Small deterministic PRNG (mulberry32) so the simulation is reproducible.
-function seededRandom(seed: number): () => number {
-  let state = seed;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  return entries.map(({ id, position }) => createEntity({ id, color: '#000000', position }));
 }
 
 describe('chooseBotDirection', () => {
@@ -58,7 +49,7 @@ describe('chooseBotDirection', () => {
 
 describe('bot simulation', () => {
   it('runs 5 bots without overlap or leaving the board, and they paint cells', () => {
-    const random = seededRandom(12);
+    const random = createRng(12);
     const { player, bots } = getStartingPositions(5);
     let entities = makeEntities([
       { id: 'player', position: player },

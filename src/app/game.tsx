@@ -7,7 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Board } from '../components/board/Board';
 import { BoardEntityLayer, BoardEntityViewModel } from '../components/board/BoardEntityLayer';
 import { BoardSpace, BoardSpaceProvider } from '../components/board/useBoardLayout';
-import { useBotController } from '../components/bots/useBotController';
 import { useSwipeMovement } from '../components/gestures/useSwipeMovement';
 import { IntensityReadout } from '../components/hud/IntensityReadout';
 import { MatchHud } from '../components/hud/MatchHud';
@@ -15,19 +14,23 @@ import { PAINT_BUTTON_SIZE, PaintButton } from '../components/hud/PaintButton';
 import { PauseDialog } from '../components/hud/PauseDialog';
 import { JellyHandle } from '../components/jelly/types';
 import { CountdownOverlay } from '../components/match/CountdownOverlay';
-import { useMatchClock } from '../components/match/useMatchClock';
+import { useGameLoop } from '../components/match/useGameLoop';
+import { useMatchAnimations } from '../components/match/useMatchAnimations';
 import { MatchParams, parseMatchParams } from '../components/menu/matchConfig';
 import { cellsOwned, score } from '../game/rules';
-import { PLAYER_ID, useGameStore } from '../game/store';
-import { Direction, PlayerId } from '../game/types';
+import { PlayerId } from '../game/types';
+import { useGameStore } from '../state/gameStore';
 
 const CONTROLS_MARGIN = 16;
 
 export default function GameScreen() {
   const { duration, bots } = useLocalSearchParams<MatchParams>();
-  const grid = useGameStore((s) => s.grid);
-  const entities = useGameStore((s) => s.entities);
-  const remainingMs = useGameStore((s) => s.remainingMs);
+  const grid = useGameStore((s) => s.match.grid);
+  const entities = useGameStore((s) => s.match.entities);
+  // Rounded up to whole seconds (all the HUD shows), so the every-frame game loop only re-renders
+  // the screen once a second.
+  const remainingMs = useGameStore((s) => Math.ceil(s.match.remainingMs / 1000) * 1000);
+  const localPlayerId = useGameStore((s) => s.localPlayerId);
   // One stable ref per entity id, so jellies keep their handle across re-renders.
   const [jellyRefs] = useState(() => new Map<PlayerId, RefObject<JellyHandle | null>>());
   const [boardSpace, setBoardSpace] = useState<BoardSpace | null>(null);
@@ -43,7 +46,7 @@ export default function GameScreen() {
   useEffect(
     () =>
       useGameStore.subscribe((state, prev) => {
-        if (state.status === 'ended' && prev.status !== 'ended') {
+        if (state.match.status === 'ended' && prev.match.status !== 'ended') {
           router.replace('/results');
         }
       }),
@@ -61,11 +64,11 @@ export default function GameScreen() {
 
   const getJelly = useCallback((id: PlayerId) => jellyRefs.get(id)?.current ?? null, [jellyRefs]);
 
-  useBotController(getJelly);
-  useMatchClock();
+  useMatchAnimations(getJelly);
+  useGameLoop();
 
   const openPause = useCallback(() => {
-    if (useGameStore.getState().status === 'ended') return;
+    if (useGameStore.getState().match.status === 'ended') return;
     useGameStore.getState().setPaused(true);
     setPauseOpen(true);
   }, []);
@@ -85,7 +88,7 @@ export default function GameScreen() {
   useEffect(() => {
     if (!pauseOpen) return;
     return useGameStore.subscribe((state) => {
-      if (state.status === 'playing' || state.status === 'countdown') state.setPaused(true);
+      if (state.match.status === 'playing' || state.match.status === 'countdown') state.setPaused(true);
     });
   }, [pauseOpen]);
 
@@ -106,31 +109,20 @@ export default function GameScreen() {
     );
   }, []);
 
-  const handleMove = useCallback(
-    (direction: Direction) => {
-      const prevEntities = useGameStore.getState().entities;
-      useGameStore.getState().move(PLAYER_ID, direction);
-      if (useGameStore.getState().entities !== prevEntities) {
-        getJelly(PLAYER_ID)?.playMove(direction);
-      }
-    },
-    [getJelly]
-  );
-
   const handlePaint = useCallback(() => {
-    if (useGameStore.getState().status !== 'playing') return;
-    useGameStore.getState().paint(PLAYER_ID);
-    getJelly(PLAYER_ID)?.playPaint();
-  }, [getJelly]);
+    const { dispatch, localPlayerId: entityId } = useGameStore.getState();
+    dispatch({ type: 'paint', entityId, taps: 1 });
+  }, []);
 
-  const { gesture } = useSwipeMovement({ onMove: handleMove });
+  const holdDirection = useGameStore((s) => s.holdDirection);
+  const { gesture } = useSwipeMovement({ onDirectionChange: holdDirection });
 
   const ownerColors = useMemo(
     () => Object.fromEntries(entities.map((e) => [e.id, e.color])),
     [entities]
   );
 
-  const player = entities.find((e) => e.id === PLAYER_ID);
+  const player = entities.find((e) => e.id === localPlayerId);
   const boardEntities: BoardEntityViewModel[] = entities.map((e) => ({
     id: e.id,
     color: e.color,
@@ -138,8 +130,8 @@ export default function GameScreen() {
     ref: jellyRefFor(e.id),
   }));
   const currentCell = player ? grid[player.position.row][player.position.col] : null;
-  const playerScore = useMemo(() => score(grid, PLAYER_ID), [grid]);
-  const playerCells = useMemo(() => cellsOwned(grid, PLAYER_ID), [grid]);
+  const playerScore = useMemo(() => score(grid, localPlayerId), [grid, localPlayerId]);
+  const playerCells = useMemo(() => cellsOwned(grid, localPlayerId), [grid, localPlayerId]);
 
   return (
     <View

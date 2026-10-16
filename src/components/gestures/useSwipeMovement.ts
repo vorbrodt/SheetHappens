@@ -4,40 +4,28 @@ import { Gesture } from 'react-native-gesture-handler';
 import { Direction } from '../../game/types';
 import { advanceSwipe, INITIAL_SWIPE_TRACKER } from './swipeTracker';
 
-export const MOVE_INTERVAL_MS = 200;
-
 interface UseSwipeMovementOptions {
-  onMove: (direction: Direction) => void;
+  // Called with the swipe's direction whenever it changes, and with null once the finger lifts.
+  // Repeating the move while a direction is held is up to the engine, at the entity's own pace.
+  onDirectionChange: (direction: Direction | null) => void;
 }
 
-export function useSwipeMovement({ onMove }: UseSwipeMovementOptions) {
+export function useSwipeMovement({ onDirectionChange }: UseSwipeMovementOptions) {
   const activeDirection = useRef<Direction | null>(null);
-  const intervalId = useRef<ReturnType<typeof setInterval> | null>(null);
   const tracker = useRef(INITIAL_SWIPE_TRACKER);
 
-  const stopRepeating = useCallback(() => {
-    if (intervalId.current) {
-      clearInterval(intervalId.current);
-      intervalId.current = null;
-    }
-    activeDirection.current = null;
-  }, []);
-
-  const startRepeating = useCallback(
-    (direction: Direction) => {
+  const setDirection = useCallback(
+    (direction: Direction | null) => {
       if (activeDirection.current === direction) return;
-
-      if (intervalId.current) {
-        clearInterval(intervalId.current);
-      }
       activeDirection.current = direction;
-      onMove(direction);
-      intervalId.current = setInterval(() => onMove(direction), MOVE_INTERVAL_MS);
+      onDirectionChange(direction);
     },
-    [onMove]
+    [onDirectionChange]
   );
 
-  useEffect(() => stopRepeating, [stopRepeating]);
+  const release = useCallback(() => setDirection(null), [setDirection]);
+
+  useEffect(() => release, [release]);
 
   const gesture = useMemo(() => {
     /* eslint-disable react-hooks/refs --
@@ -53,12 +41,12 @@ export function useSwipeMovement({ onMove }: UseSwipeMovementOptions) {
           dx: event.translationX,
           dy: event.translationY,
         });
-        if (tracker.current.direction) startRepeating(tracker.current.direction);
+        if (tracker.current.direction) setDirection(tracker.current.direction);
       })
-      .onEnd(stopRepeating)
-      .onFinalize(stopRepeating);
+      .onEnd(release)
+      .onFinalize(release);
     /* eslint-enable react-hooks/refs */
-  }, [startRepeating, stopRepeating]);
+  }, [setDirection, release]);
 
   return { gesture };
 }

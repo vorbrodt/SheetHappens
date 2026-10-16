@@ -1,5 +1,5 @@
 import { MAX_BOT_COUNT } from '../../game/placement';
-import { DEFAULT_CONFIG } from '../../game/store';
+import { DEFAULT_CONFIG } from '../../game/engine';
 import { MatchConfig } from '../../game/types';
 
 export const DURATION_OPTIONS = [30, 60, 90, 120];

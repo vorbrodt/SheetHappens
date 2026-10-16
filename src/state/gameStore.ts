@@ -1,0 +1,79 @@
+import { create } from 'zustand';
+
+import { applyInput, createMatch, DEFAULT_CONFIG, moveReadyAt, setPaused, step } from '../game/engine';
+import { Direction, MatchConfig, MatchInput, MatchState, PlayerId } from '../game/types';
+
+// The id the player on this device plays under in single-player matches.
+const LOCAL_PLAYER_ID: PlayerId = 'player';
+
+interface GameStore {
+  match: MatchState;
+  config: MatchConfig;
+  // The entity this device controls; the UI shows its stats and sends its inputs.
+  localPlayerId: PlayerId;
+  // The direction the local player is holding a swipe in. Its move repeats every step while held.
+  heldDirection: Direction | null;
+  // Starts a fresh match in the countdown phase.
+  initMatch: (config?: Partial<MatchConfig>) => void;
+  // Applies an input at the current match time. The engine ignores it unless the match is playing.
+  dispatch: (input: MatchInput) => void;
+  // Holds (or, with null, releases) the local player's swipe; a new direction moves straight away.
+  holdDirection: (direction: Direction | null) => void;
+  // Advances the match by wall-clock time; called once per frame by the game loop.
+  step: (deltaMs: number) => void;
+  setPaused: (paused: boolean) => void;
+}
+
+export const useGameStore = create<GameStore>()((set, get) => {
+  const setMatch = (match: MatchState) => {
+    if (match !== get().match) set({ match });
+  };
+
+  return {
+    match: createMatch(DEFAULT_CONFIG, LOCAL_PLAYER_ID),
+    config: DEFAULT_CONFIG,
+    localPlayerId: LOCAL_PLAYER_ID,
+    heldDirection: null,
+
+    initMatch: (config) => {
+      const nextConfig = { ...get().config, ...config };
+      set({
+        match: createMatch(nextConfig, LOCAL_PLAYER_ID),
+        config: nextConfig,
+        localPlayerId: LOCAL_PLAYER_ID,
+        heldDirection: null,
+      });
+    },
+
+    dispatch: (input) => {
+      const { match } = get();
+      setMatch(applyInput(match, input, match.elapsedMs));
+    },
+
+    holdDirection: (direction) => {
+      if (direction === get().heldDirection) return;
+      set({ heldDirection: direction });
+      if (direction) get().dispatch({ type: 'move', entityId: get().localPlayerId, direction });
+    },
+
+    step: (deltaMs) => {
+      const { match, heldDirection, localPlayerId } = get();
+      let next = step(match, deltaMs, Math.random);
+
+      const player = next.entities.find((e) => e.id === localPlayerId);
+      if (heldDirection && player) {
+        // Stamped with the moment the next move came due within this step, so a held swipe repeats
+        // at exactly the player's move interval rather than on frame boundaries.
+        const dueAt = Math.max(moveReadyAt(player), match.elapsedMs);
+        if (dueAt <= next.elapsedMs) {
+          const moved = applyInput(next, { type: 'move', entityId: localPlayerId, direction: heldDirection }, dueAt);
+          if (moved !== next) next = { ...moved, events: [...next.events, ...moved.events] };
+        }
+      }
+
+      setMatch(next);
+    },
+
+    setPaused: (paused) => setMatch(setPaused(get().match, paused)),
+  };
+});

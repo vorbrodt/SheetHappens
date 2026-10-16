@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BotCountStepper } from '../components/menu/BotCountStepper';
 import { DURATION_OPTIONS, toMatchParams } from '../components/menu/matchConfig';
 import { MenuBackground } from '../components/menu/MenuBackground';
-import { DEFAULT_CONFIG } from '../game/store';
+import { DEFAULT_CONFIG } from '../game/engine';
 
 // Only Android lets an app close itself: iOS apps must not quit programmatically, and a browser
 // tab can't be closed from script, so Quit is not offered there.

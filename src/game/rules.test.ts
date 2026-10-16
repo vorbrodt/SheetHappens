@@ -1,3 +1,4 @@
+import { createEntity } from './engine';
 import { Entity, Grid } from './types';
 import {
   BOARD_SIZE,
@@ -11,11 +12,13 @@ import {
 } from './rules';
 
 function makeEntities(overrides: Partial<Entity>[]): Entity[] {
-  return overrides.map((entity, index) => ({
-    id: entity.id ?? `entity-${index}`,
-    color: entity.color ?? '#000000',
-    position: entity.position ?? { row: 0, col: 0 },
-  }));
+  return overrides.map((entity, index) =>
+    createEntity({
+      id: entity.id ?? `entity-${index}`,
+      color: entity.color ?? '#000000',
+      position: entity.position ?? { row: 0, col: 0 },
+    })
+  );
 }
 
 describe('move', () => {
@@ -100,6 +103,22 @@ describe('paint', () => {
 
     const afterSecondPaint = paint(afterFirstPaint, entities, 'a');
     expect(afterSecondPaint[1][1]).toEqual({ owner: 'a', intensity: 1 });
+  });
+
+  it.each([
+    [{ owner: null, intensity: 0 }, 3],
+    [{ owner: 'a', intensity: 98 }, 5],
+    [{ owner: 'b', intensity: 5 }, 2],
+    [{ owner: 'b', intensity: 3 }, 3],
+    [{ owner: 'b', intensity: 2 }, 6],
+  ])('paints %o by %i the same as that many single paints', (cell, amount) => {
+    const entities = makeEntities([{ id: 'a', position: { row: 1, col: 1 } }]);
+    const grid = gridWithCell(1, 1, cell);
+
+    let repeated = grid;
+    for (let i = 0; i < amount; i++) repeated = paint(repeated, entities, 'a');
+
+    expect(paint(grid, entities, 'a', amount)[1][1]).toEqual(repeated[1][1]);
   });
 });
 

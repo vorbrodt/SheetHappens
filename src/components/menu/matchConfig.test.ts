@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG } from '../../game/store';
+import { DEFAULT_CONFIG } from '../../game/engine';
 import { clampBotCount, MAX_BOTS, parseMatchParams, toMatchParams } from './matchConfig';
 
 describe('clampBotCount', () => {
