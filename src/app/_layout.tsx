@@ -7,6 +7,7 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="index" options={{ title: 'Menu' }} />
         <Stack.Screen name="game" options={{ title: 'Game' }} />
+        <Stack.Screen name="results" options={{ title: 'Results', headerBackVisible: false }} />
         <Stack.Screen name="jelly-preview" options={{ title: 'Jelly Preview' }} />
       </Stack>
     </GestureHandlerRootView>

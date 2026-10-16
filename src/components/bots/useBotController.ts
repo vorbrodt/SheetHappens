@@ -6,6 +6,8 @@ import { PlayerId } from '../../game/types';
 import { JellyHandle } from '../jelly/types';
 
 function getBotIds(): PlayerId[] {
+  // No bot acts while the match is paused or over.
+  if (useGameStore.getState().status !== 'playing') return [];
   return useGameStore
     .getState()
     .entities.filter((e) => e.id !== PLAYER_ID)
@@ -16,6 +18,7 @@ function getBotIds(): PlayerId[] {
  * Drives every bot in the store while the calling screen is mounted: each move tick a bot steps
  * in a random legal direction, and each paint tick it paints its current cell. Bot ids are read
  * from the store on every tick, so a re-initialized match is picked up without restarting.
+ * Bots sit still whenever the match is not playing.
  */
 export function useBotController(getJelly: (id: PlayerId) => JellyHandle | null) {
   useEffect(() => {
