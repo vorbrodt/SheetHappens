@@ -2,25 +2,18 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Gesture } from 'react-native-gesture-handler';
 
 import { Direction } from '../../game/types';
-import { isPointInPaintZone, PAINT_ZONE_HEIGHT_RATIO } from './paintZone';
-import { resolveSwipeDirection } from './resolveSwipeDirection';
+import { advanceSwipe, INITIAL_SWIPE_TRACKER } from './swipeTracker';
 
 export const MOVE_INTERVAL_MS = 200;
 
 interface UseSwipeMovementOptions {
   onMove: (direction: Direction) => void;
-  surfaceHeight: number;
-  paintZoneRatio?: number;
 }
 
-export function useSwipeMovement({
-  onMove,
-  surfaceHeight,
-  paintZoneRatio = PAINT_ZONE_HEIGHT_RATIO,
-}: UseSwipeMovementOptions) {
+export function useSwipeMovement({ onMove }: UseSwipeMovementOptions) {
   const activeDirection = useRef<Direction | null>(null);
   const intervalId = useRef<ReturnType<typeof setInterval> | null>(null);
-  const ignoreGesture = useRef(false);
+  const tracker = useRef(INITIAL_SWIPE_TRACKER);
 
   const stopRepeating = useCallback(() => {
     if (intervalId.current) {
@@ -52,19 +45,20 @@ export function useSwipeMovement({
        never synchronously during render. */
     return Gesture.Pan()
       .runOnJS(true)
-      .onBegin((event) => {
-        ignoreGesture.current = isPointInPaintZone(event.y, surfaceHeight, paintZoneRatio);
+      .onBegin(() => {
+        tracker.current = INITIAL_SWIPE_TRACKER;
       })
       .onUpdate((event) => {
-        if (ignoreGesture.current) return;
-
-        const direction = resolveSwipeDirection({ dx: event.translationX, dy: event.translationY });
-        if (direction) startRepeating(direction);
+        tracker.current = advanceSwipe(tracker.current, {
+          dx: event.translationX,
+          dy: event.translationY,
+        });
+        if (tracker.current.direction) startRepeating(tracker.current.direction);
       })
       .onEnd(stopRepeating)
       .onFinalize(stopRepeating);
     /* eslint-enable react-hooks/refs */
-  }, [paintZoneRatio, startRepeating, stopRepeating, surfaceHeight]);
+  }, [startRepeating, stopRepeating]);
 
   return { gesture };
 }
