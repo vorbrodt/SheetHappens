@@ -1,5 +1,14 @@
 import { Entity, Grid } from './types';
-import { BOARD_SIZE, cellsOwned, createEmptyGrid, move, paint, resolveTieBreak, score } from './rules';
+import {
+  BOARD_SIZE,
+  cellsOwned,
+  createEmptyGrid,
+  move,
+  paint,
+  rankEntities,
+  resolveTieBreak,
+  score,
+} from './rules';
 
 function makeEntities(overrides: Partial<Entity>[]): Entity[] {
   return overrides.map((entity, index) => ({
@@ -126,5 +135,57 @@ describe('resolveTieBreak', () => {
     grid[7][7] = { owner: 'b', intensity: 20 };
 
     expect(resolveTieBreak(grid, ['a', 'b'])).toEqual(['a', 'b']);
+  });
+});
+
+describe('rankEntities', () => {
+  it('sorts by score, highest first', () => {
+    const grid = createEmptyGrid();
+    grid[0][0] = { owner: 'a', intensity: 5 };
+    grid[0][1] = { owner: 'b', intensity: 30 };
+    grid[0][2] = { owner: 'c', intensity: 12 };
+
+    const standings = rankEntities(grid, ['a', 'b', 'c']);
+
+    expect(standings.map((s) => s.id)).toEqual(['b', 'c', 'a']);
+    expect(standings.map((s) => s.rank)).toEqual([1, 2, 3]);
+    expect(standings[0]).toEqual({ id: 'b', score: 30, cellsOwned: 1, rank: 1 });
+  });
+
+  it('breaks a score tie by cells owned', () => {
+    const grid = createEmptyGrid();
+    grid[0][0] = { owner: 'a', intensity: 40 };
+    grid[7][7] = { owner: 'b', intensity: 20 };
+    grid[7][6] = { owner: 'b', intensity: 20 };
+
+    const standings = rankEntities(grid, ['a', 'b']);
+
+    expect(standings.map((s) => s.id)).toEqual(['b', 'a']);
+    expect(standings.map((s) => s.rank)).toEqual([1, 2]);
+  });
+
+  it('gives exact ties a shared rank and skips the ranks they fill', () => {
+    const grid = createEmptyGrid();
+    grid[0][0] = { owner: 'a', intensity: 20 };
+    grid[0][1] = { owner: 'b', intensity: 20 };
+    grid[0][2] = { owner: 'c', intensity: 3 };
+
+    const standings = rankEntities(grid, ['c', 'a', 'b', 'd']);
+
+    expect(standings.map((s) => [s.id, s.rank])).toEqual([
+      ['a', 1],
+      ['b', 1],
+      ['c', 3],
+      ['d', 4],
+    ]);
+  });
+
+  it('includes entities that never painted', () => {
+    const standings = rankEntities(createEmptyGrid(), ['a', 'b']);
+
+    expect(standings).toEqual([
+      { id: 'a', score: 0, cellsOwned: 0, rank: 1 },
+      { id: 'b', score: 0, cellsOwned: 0, rank: 1 },
+    ]);
   });
 });
