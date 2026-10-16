@@ -1,5 +1,5 @@
 import { createRef, RefObject, useCallback, useEffect, useMemo, useState } from 'react';
-import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { GestureDetector } from 'react-native-gesture-handler';
 
@@ -24,7 +24,6 @@ export default function GameScreen() {
   const remainingMs = useGameStore((s) => s.remainingMs);
   // One stable ref per entity id, so jellies keep their handle across re-renders.
   const [jellyRefs] = useState(() => new Map<PlayerId, RefObject<JellyHandle | null>>());
-  const [surfaceHeight, setSurfaceHeight] = useState(0);
 
   useEffect(() => {
     useGameStore.getState().initMatch(parseMatchParams({ duration, bots }));
@@ -73,11 +72,7 @@ export default function GameScreen() {
     getJelly(PLAYER_ID)?.playPaint();
   }, [getJelly]);
 
-  const { gesture } = useSwipeMovement({ onMove: handleMove, surfaceHeight });
-
-  const handleSurfaceLayout = useCallback((event: LayoutChangeEvent) => {
-    setSurfaceHeight(event.nativeEvent.layout.height);
-  }, []);
+  const { gesture } = useSwipeMovement({ onMove: handleMove });
 
   const ownerColors = useMemo(
     () => Object.fromEntries(entities.map((e) => [e.id, e.color])),
@@ -107,7 +102,7 @@ export default function GameScreen() {
       )}
       <View style={styles.playArea}>
         <GestureDetector gesture={gesture}>
-          <View style={styles.gestureSurface} onLayout={handleSurfaceLayout}>
+          <View style={styles.gestureSurface}>
             {currentCell && (
               <View style={styles.readout}>
                 <IntensityReadout
