@@ -65,7 +65,12 @@ export function move(
   return entities.map((e) => (e.id === entityId ? { ...e, position: target } : e));
 }
 
-export function paint(grid: Grid, entities: Entity[], entityId: PlayerId): Grid {
+/**
+ * Paints the entity's current cell by `amount`, which works out the same as `amount` paints of 1:
+ * an own or neutral cell gains intensity (capped at 100), and a rival's cell loses it, turning
+ * neutral at 0 and then the painter's with whatever is left over.
+ */
+export function paint(grid: Grid, entities: Entity[], entityId: PlayerId, amount: number = 1): Grid {
   const entity = entities.find((e) => e.id === entityId);
   if (!entity) return grid;
 
@@ -74,10 +79,13 @@ export function paint(grid: Grid, entities: Entity[], entityId: PlayerId): Grid 
 
   let nextCell: Cell;
   if (cell.owner === null || cell.owner === entityId) {
-    nextCell = { owner: entityId, intensity: Math.min(100, cell.intensity + 1) };
+    nextCell = { owner: entityId, intensity: Math.min(100, cell.intensity + amount) };
+  } else if (amount < cell.intensity) {
+    nextCell = { owner: cell.owner, intensity: cell.intensity - amount };
+  } else if (amount === cell.intensity) {
+    nextCell = { owner: null, intensity: 0 };
   } else {
-    const intensity = Math.max(0, cell.intensity - 1);
-    nextCell = { owner: intensity === 0 ? null : cell.owner, intensity };
+    nextCell = { owner: entityId, intensity: Math.min(100, amount - cell.intensity) };
   }
 
   return grid.map((gridRow, ri) =>

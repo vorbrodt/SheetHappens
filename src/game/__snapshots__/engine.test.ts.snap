@@ -1,0 +1,42 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`full simulated match plays out deterministically for a fixed seed 1`] = `
+[
+  {
+    "cellsOwned": 16,
+    "id": "player",
+    "rank": 1,
+    "score": 573,
+  },
+  {
+    "cellsOwned": 13,
+    "id": "bot-1",
+    "rank": 2,
+    "score": 59,
+  },
+  {
+    "cellsOwned": 11,
+    "id": "bot-3",
+    "rank": 3,
+    "score": 58,
+  },
+  {
+    "cellsOwned": 11,
+    "id": "bot-5",
+    "rank": 4,
+    "score": 53,
+  },
+  {
+    "cellsOwned": 8,
+    "id": "bot-2",
+    "rank": 5,
+    "score": 33,
+  },
+  {
+    "cellsOwned": 4,
+    "id": "bot-4",
+    "rank": 6,
+    "score": 13,
+  },
+]
+`;

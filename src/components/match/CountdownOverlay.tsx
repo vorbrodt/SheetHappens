@@ -8,14 +8,14 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
-import { useGameStore } from '../../game/store';
+import { useGameStore } from '../../state/gameStore';
 
 // How long "Go!" stays up once play has started.
 const GO_VISIBLE_MS = 700;
 
 // Picks the countdown label: the whole seconds left (frozen while paused), then "Go!".
-function countdownLabel(countdownMs: number, showGo: boolean): string | null {
-  if (countdownMs > 0) return String(Math.ceil(countdownMs / 1000));
+function countdownLabel(countdownSeconds: number, showGo: boolean): string | null {
+  if (countdownSeconds > 0) return String(countdownSeconds);
   return showGo ? 'Go!' : null;
 }
 
@@ -24,7 +24,8 @@ function countdownLabel(countdownMs: number, showGo: boolean): string | null {
  * with a squash-and-stretch wobble. Purely visual: it never takes touches.
  */
 export function CountdownOverlay() {
-  const countdownMs = useGameStore((s) => s.countdownMs);
+  // Whole seconds, so the every-frame game loop only re-renders this when the label changes.
+  const countdownSeconds = useGameStore((s) => Math.ceil(s.match.countdownMs / 1000));
   const [showGo, setShowGo] = useState(false);
   const pop = useSharedValue(0);
 
@@ -32,7 +33,7 @@ export function CountdownOverlay() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = useGameStore.subscribe((state, prev) => {
-      if (state.status === 'playing' && prev.status === 'countdown') {
+      if (state.match.status === 'playing' && prev.match.status === 'countdown') {
         setShowGo(true);
         clearTimeout(timer);
         timer = setTimeout(() => setShowGo(false), GO_VISIBLE_MS);
@@ -44,7 +45,7 @@ export function CountdownOverlay() {
     };
   }, []);
 
-  const label = countdownLabel(countdownMs, showGo);
+  const label = countdownLabel(countdownSeconds, showGo);
 
   useEffect(() => {
     if (!label) return;

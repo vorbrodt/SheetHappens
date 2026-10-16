@@ -7,20 +7,22 @@ import { toMatchParams } from '../components/menu/matchConfig';
 import { entityName } from '../components/results/entityName';
 import { ResultHeader, ResultRow } from '../components/results/ResultRow';
 import { rankEntities, Standing } from '../game/rules';
-import { PLAYER_ID, useGameStore } from '../game/store';
+import { PlayerId } from '../game/types';
+import { useGameStore } from '../state/gameStore';
 
-function headline(winners: Standing[]): string {
+function headline(winners: Standing[], localPlayerId: PlayerId): string {
   if (winners.length > 1) return "It's a tie!";
-  if (winners[0]?.id === PLAYER_ID) return 'You win!';
-  return winners[0] ? `${entityName(winners[0].id)} wins!` : "Time's up!";
+  if (winners[0]?.id === localPlayerId) return 'You win!';
+  return winners[0] ? `${entityName(winners[0].id, localPlayerId)} wins!` : "Time's up!";
 }
 
 const ACTIONS_MARGIN = 24;
 
 export default function ResultsScreen() {
-  const grid = useGameStore((s) => s.grid);
-  const entities = useGameStore((s) => s.entities);
+  const grid = useGameStore((s) => s.match.grid);
+  const entities = useGameStore((s) => s.match.entities);
   const config = useGameStore((s) => s.config);
+  const localPlayerId = useGameStore((s) => s.localPlayerId);
   const insets = useSafeAreaInsets();
 
   const standings = useMemo(
@@ -36,11 +38,11 @@ export default function ResultsScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title} accessibilityRole="header">
-          {headline(winners)}
+          {headline(winners, localPlayerId)}
         </Text>
         {winners.length > 1 && (
           <Text style={styles.subtitle}>
-            Joint winners: {winners.map((w) => entityName(w.id)).join(', ')}
+            Joint winners: {winners.map((w) => entityName(w.id, localPlayerId)).join(', ')}
           </Text>
         )}
         <View style={styles.list}>
@@ -49,7 +51,7 @@ export default function ResultsScreen() {
             <ResultRow
               key={s.id}
               rank={s.rank}
-              name={entityName(s.id)}
+              name={entityName(s.id, localPlayerId)}
               color={colors[s.id]}
               score={s.score}
               cellsOwned={s.cellsOwned}
