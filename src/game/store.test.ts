@@ -67,3 +67,17 @@ describe('frozen input', () => {
     expect(useGameStore.getState().grid).not.toBe(grid);
   });
 });
+
+describe('initMatch', () => {
+  it('keeps the previous bot count when only the duration is given', () => {
+    useGameStore.getState().initMatch({ durationSeconds: 30, botCount: 4 });
+    useGameStore.getState().tick(Number.MAX_SAFE_INTEGER);
+
+    useGameStore.getState().initMatch({ durationSeconds: 30 });
+
+    const { config, entities, status } = useGameStore.getState();
+    expect(config).toEqual({ durationSeconds: 30, botCount: 4 });
+    expect(entities).toHaveLength(5);
+    expect(status).toBe('playing');
+  });
+});

@@ -98,3 +98,26 @@ export function resolveTieBreak(grid: Grid, entityIds: PlayerId[]): PlayerId[] {
   const maxCells = Math.max(...counts.map((c) => c.cells));
   return counts.filter((c) => c.cells === maxCells).map((c) => c.id);
 }
+
+export interface Standing {
+  id: PlayerId;
+  score: number;
+  cellsOwned: number;
+  // 1-based. Entities tied on both score and cells owned share a rank, so rank 1 is every winner.
+  rank: number;
+}
+
+// Final standings, best first: by score, then by cells owned. Exact ties keep the input order.
+export function rankEntities(grid: Grid, entityIds: PlayerId[]): Standing[] {
+  const sorted = entityIds
+    .map((id) => ({ id, score: score(grid, id), cellsOwned: cellsOwned(grid, id) }))
+    .sort((a, b) => b.score - a.score || b.cellsOwned - a.cellsOwned);
+
+  const standings: Standing[] = [];
+  sorted.forEach((entry, index) => {
+    const prev = standings[index - 1];
+    const tied = prev && prev.score === entry.score && prev.cellsOwned === entry.cellsOwned;
+    standings.push({ ...entry, rank: tied ? prev.rank : index + 1 });
+  });
+  return standings;
+}
