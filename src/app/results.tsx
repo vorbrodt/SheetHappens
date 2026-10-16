@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { toMatchParams } from '../components/menu/matchConfig';
 import { entityName } from '../components/results/entityName';
@@ -14,10 +15,13 @@ function headline(winners: Standing[]): string {
   return winners[0] ? `${entityName(winners[0].id)} wins!` : "Time's up!";
 }
 
+const ACTIONS_MARGIN = 24;
+
 export default function ResultsScreen() {
   const grid = useGameStore((s) => s.grid);
   const entities = useGameStore((s) => s.entities);
   const config = useGameStore((s) => s.config);
+  const insets = useSafeAreaInsets();
 
   const standings = useMemo(
     () => rankEntities(grid, entities.map((e) => e.id)),
@@ -54,7 +58,17 @@ export default function ResultsScreen() {
           ))}
         </View>
       </ScrollView>
-      <View style={styles.actions}>
+      {/* The header covers the top inset; the buttons must clear the home indicator / nav bar. */}
+      <View
+        style={[
+          styles.actions,
+          {
+            paddingBottom: ACTIONS_MARGIN + insets.bottom,
+            paddingLeft: ACTIONS_MARGIN + insets.left,
+            paddingRight: ACTIONS_MARGIN + insets.right,
+          },
+        ]}
+      >
         <Pressable style={styles.button} onPress={playAgain}>
           <Text style={styles.buttonText}>Play Again</Text>
         </Pressable>
@@ -93,8 +107,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actions: {
-    paddingHorizontal: 24,
-    paddingBottom: 24,
     gap: 12,
   },
   button: {

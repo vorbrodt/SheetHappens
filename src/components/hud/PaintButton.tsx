@@ -10,7 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-const BUTTON_SIZE = 72;
+export const PAINT_BUTTON_SIZE = 72;
 const ICON_SIZE = 34;
 const PRESSED_SCALE = 0.88;
 
@@ -76,9 +76,9 @@ export function PaintButton({ color, onPaint }: PaintButtonProps) {
 
 const styles = StyleSheet.create({
   button: {
-    width: BUTTON_SIZE,
-    height: BUTTON_SIZE,
-    borderRadius: BUTTON_SIZE / 2,
+    width: PAINT_BUTTON_SIZE,
+    height: PAINT_BUTTON_SIZE,
+    borderRadius: PAINT_BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
