@@ -29,6 +29,12 @@ const MOVE_STRETCH = 0.28;
 const MOVE_SQUASH = 0.16;
 const PAINT_SQUISH = 0.18;
 
+// How long a move's stretch lasts before the landing squash. The board slides a jelly between
+// cells over the same time, so it stretches while travelling and squashes as it lands. Kept under
+// the 200 ms held-swipe repeat so a held move never falls behind the jelly's logical cell.
+export const JELLY_MOVE_TRAVEL_MS = 150;
+const MOVE_LANDING_MS = 90;
+
 export const Jelly = forwardRef<JellyHandle, JellyProps>(function Jelly(
   { color, size, showFace = true, renderer = 'procedural' },
   ref
@@ -66,14 +72,17 @@ export const Jelly = forwardRef<JellyHandle, JellyProps>(function Jelly(
         const squashX = horizontal ? 1 - MOVE_SQUASH : 1 + MOVE_SQUASH * 0.6;
         const squashY = horizontal ? 1 + MOVE_SQUASH * 0.6 : 1 - MOVE_SQUASH;
 
+        const travel = { duration: JELLY_MOVE_TRAVEL_MS, easing: Easing.out(Easing.quad) };
+        const landing = { duration: MOVE_LANDING_MS, easing: Easing.out(Easing.quad) };
+
         moveScaleX.value = withSequence(
-          withTiming(stretchX, { duration: 120, easing: Easing.out(Easing.quad) }),
-          withTiming(squashX, { duration: 100, easing: Easing.out(Easing.quad) }),
+          withTiming(stretchX, travel),
+          withTiming(squashX, landing),
           withSpring(1, { damping: 8, stiffness: 160 })
         );
         moveScaleY.value = withSequence(
-          withTiming(stretchY, { duration: 120, easing: Easing.out(Easing.quad) }),
-          withTiming(squashY, { duration: 100, easing: Easing.out(Easing.quad) }),
+          withTiming(stretchY, travel),
+          withTiming(squashY, landing),
           withSpring(1, { damping: 8, stiffness: 160 })
         );
       },
