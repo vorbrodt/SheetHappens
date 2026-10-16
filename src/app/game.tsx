@@ -12,17 +12,13 @@ import { MatchHud } from '../components/hud/MatchHud';
 import { PaintButton } from '../components/hud/PaintButton';
 import { JellyHandle } from '../components/jelly/types';
 import { useMatchClock } from '../components/match/useMatchClock';
+import { MatchParams, parseMatchParams } from '../components/menu/matchConfig';
 import { cellsOwned, score } from '../game/rules';
-import { DEFAULT_CONFIG, PLAYER_ID, useGameStore } from '../game/store';
+import { PLAYER_ID, useGameStore } from '../game/store';
 import { Direction, PlayerId } from '../game/types';
 
-function parseDuration(param: string | undefined): number {
-  const seconds = Number(param);
-  return Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_CONFIG.durationSeconds;
-}
-
 export default function GameScreen() {
-  const { duration } = useLocalSearchParams<{ duration?: string }>();
+  const { duration, bots } = useLocalSearchParams<MatchParams>();
   const grid = useGameStore((s) => s.grid);
   const entities = useGameStore((s) => s.entities);
   const remainingMs = useGameStore((s) => s.remainingMs);
@@ -31,8 +27,8 @@ export default function GameScreen() {
   const [surfaceHeight, setSurfaceHeight] = useState(0);
 
   useEffect(() => {
-    useGameStore.getState().initMatch({ durationSeconds: parseDuration(duration) });
-  }, [duration]);
+    useGameStore.getState().initMatch(parseMatchParams({ duration, bots }));
+  }, [duration, bots]);
 
   // Reacts to the moment the match ends rather than to the status itself, so a stale "ended"
   // left in the store by the previous match never skips this one.

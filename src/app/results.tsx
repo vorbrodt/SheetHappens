@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
+import { toMatchParams } from '../components/menu/matchConfig';
 import { entityName } from '../components/results/entityName';
 import { ResultHeader, ResultRow } from '../components/results/ResultRow';
 import { rankEntities, Standing } from '../game/rules';
@@ -16,7 +17,7 @@ function headline(winners: Standing[]): string {
 export default function ResultsScreen() {
   const grid = useGameStore((s) => s.grid);
   const entities = useGameStore((s) => s.entities);
-  const durationSeconds = useGameStore((s) => s.config.durationSeconds);
+  const config = useGameStore((s) => s.config);
 
   const standings = useMemo(
     () => rankEntities(grid, entities.map((e) => e.id)),
@@ -25,9 +26,7 @@ export default function ResultsScreen() {
   const winners = standings.filter((s) => s.rank === 1);
   const colors = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e.color])), [entities]);
 
-  // The store keeps this match's bot count, so only the duration needs passing back.
-  const playAgain = () =>
-    router.replace({ pathname: '/game', params: { duration: String(durationSeconds) } });
+  const playAgain = () => router.replace({ pathname: '/game', params: toMatchParams(config) });
 
   return (
     <View style={styles.container}>
