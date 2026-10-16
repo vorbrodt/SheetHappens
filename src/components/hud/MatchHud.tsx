@@ -1,27 +1,45 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { SymbolView } from 'expo-symbols';
 
 import { formatTime } from '../match/formatTime';
 
 const LOW_TIME_MS = 10_000;
 const LOW_TIME_COLOR = '#EF4444';
 const LABEL_COLOR = '#6B7280';
+const PAUSE_BUTTON_SIZE = 40;
 
 interface MatchHudProps {
   remainingMs: number;
   score: number;
   cellsOwned: number;
   color: string;
+  onPause: () => void;
 }
 
-export function MatchHud({ remainingMs, score, cellsOwned, color }: MatchHudProps) {
+export function MatchHud({ remainingMs, score, cellsOwned, color, onPause }: MatchHudProps) {
   const time = formatTime(remainingMs);
   const lowTime = remainingMs <= LOW_TIME_MS;
 
   return (
     <View style={styles.container}>
-      <View style={styles.stat} accessible accessibilityLabel={`Score ${score}`}>
-        <Text style={[styles.statValue, { color }]}>{score}</Text>
-        <Text style={styles.label}>Score</Text>
+      <View style={styles.side}>
+        <Pressable
+          style={styles.pauseButton}
+          onPress={onPause}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Pause"
+        >
+          <SymbolView
+            name={{ ios: 'pause.fill', android: 'pause', web: 'pause' }}
+            tintColor="#111827"
+            size={22}
+          />
+        </Pressable>
+        <View style={styles.stat} accessible accessibilityLabel={`Score ${score}`}>
+          <Text style={[styles.statValue, { color }]}>{score}</Text>
+          <Text style={styles.label}>Score</Text>
+        </View>
       </View>
       <View
         style={styles.timer}
@@ -31,9 +49,11 @@ export function MatchHud({ remainingMs, score, cellsOwned, color }: MatchHudProp
       >
         <Text style={[styles.timerValue, lowTime && { color: LOW_TIME_COLOR }]}>{time}</Text>
       </View>
-      <View style={styles.stat} accessible accessibilityLabel={`Cells owned ${cellsOwned}`}>
-        <Text style={[styles.statValue, { color }]}>{cellsOwned}</Text>
-        <Text style={styles.label}>Cells</Text>
+      <View style={[styles.side, styles.sideEnd]}>
+        <View style={styles.stat} accessible accessibilityLabel={`Cells owned ${cellsOwned}`}>
+          <Text style={[styles.statValue, { color }]}>{cellsOwned}</Text>
+          <Text style={styles.label}>Cells</Text>
+        </View>
       </View>
     </View>
   );
@@ -43,12 +63,29 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
+  // Equal-width sides keep the timer centered even though only the left side has a button.
+  side: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sideEnd: {
+    justifyContent: 'flex-end',
+  },
+  pauseButton: {
+    width: PAUSE_BUTTON_SIZE,
+    height: PAUSE_BUTTON_SIZE,
+    borderRadius: PAUSE_BUTTON_SIZE / 2,
+    backgroundColor: '#F1F2F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   stat: {
-    minWidth: 72,
+    minWidth: 56,
     alignItems: 'center',
   },
   statValue: {
