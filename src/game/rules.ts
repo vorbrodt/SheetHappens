@@ -9,20 +9,23 @@ const DIRECTION_DELTAS: Record<Direction, Position> = {
   right: { row: 0, col: 1 },
 };
 
+export const DIRECTIONS = Object.keys(DIRECTION_DELTAS) as Direction[];
+
 export function createEmptyGrid(size: number = BOARD_SIZE): Grid {
   return Array.from({ length: size }, () =>
     Array.from({ length: size }, (): Cell => ({ owner: null, intensity: 0 }))
   );
 }
 
-export function move(
+// The cell the entity would land on, or null if it is off-board or occupied.
+function getMoveTarget(
   entities: Entity[],
   entityId: PlayerId,
   direction: Direction,
-  boardSize: number = BOARD_SIZE
-): Entity[] {
+  boardSize: number
+): Position | null {
   const entity = entities.find((e) => e.id === entityId);
-  if (!entity) return entities;
+  if (!entity) return null;
 
   const delta = DIRECTION_DELTAS[direction];
   const target: Position = {
@@ -31,12 +34,33 @@ export function move(
   };
 
   const onBoard = target.row >= 0 && target.row < boardSize && target.col >= 0 && target.col < boardSize;
-  if (!onBoard) return entities;
+  if (!onBoard) return null;
 
   const occupied = entities.some(
     (e) => e.id !== entityId && e.position.row === target.row && e.position.col === target.col
   );
-  if (occupied) return entities;
+  if (occupied) return null;
+
+  return target;
+}
+
+export function canMove(
+  entities: Entity[],
+  entityId: PlayerId,
+  direction: Direction,
+  boardSize: number = BOARD_SIZE
+): boolean {
+  return getMoveTarget(entities, entityId, direction, boardSize) !== null;
+}
+
+export function move(
+  entities: Entity[],
+  entityId: PlayerId,
+  direction: Direction,
+  boardSize: number = BOARD_SIZE
+): Entity[] {
+  const target = getMoveTarget(entities, entityId, direction, boardSize);
+  if (!target) return entities;
 
   return entities.map((e) => (e.id === entityId ? { ...e, position: target } : e));
 }

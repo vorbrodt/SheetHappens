@@ -7,7 +7,8 @@ import { Direction, Entity, Grid, MatchConfig, PlayerId } from './types';
 export const PLAYER_ID: PlayerId = 'player';
 
 const PLAYER_COLOR = '#EC4899';
-const BOT_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7'];
+// Kept clear of the player's pink and the neutral cell gray.
+const BOT_COLORS = ['#f97316', '#3b82f6', '#22c55e', '#eab308', '#a855f7'];
 
 const DEFAULT_CONFIG: MatchConfig = { durationSeconds: 60, botCount: 2 };
 

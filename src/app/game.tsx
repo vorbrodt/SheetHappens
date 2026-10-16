@@ -1,39 +1,57 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createRef, RefObject, useCallback, useEffect, useMemo, useState } from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { GestureDetector } from 'react-native-gesture-handler';
 
 import { Board } from '../components/board/Board';
 import { BoardEntityLayer, BoardEntityViewModel } from '../components/board/BoardEntityLayer';
+import { useBotController } from '../components/bots/useBotController';
 import { useSwipeMovement } from '../components/gestures/useSwipeMovement';
 import { IntensityReadout } from '../components/hud/IntensityReadout';
 import { PaintButton } from '../components/hud/PaintButton';
 import { JellyHandle } from '../components/jelly/types';
 import { PLAYER_ID, useGameStore } from '../game/store';
-import { Direction } from '../game/types';
+import { Direction, PlayerId } from '../game/types';
 
 export default function GameScreen() {
   const grid = useGameStore((s) => s.grid);
   const entities = useGameStore((s) => s.entities);
-  const playerJellyRef = useRef<JellyHandle>(null);
+  // One stable ref per entity id, so jellies keep their handle across re-renders.
+  const [jellyRefs] = useState(() => new Map<PlayerId, RefObject<JellyHandle | null>>());
   const [surfaceHeight, setSurfaceHeight] = useState(0);
 
   useEffect(() => {
     useGameStore.getState().initMatch();
   }, []);
 
-  const handleMove = useCallback((direction: Direction) => {
-    const prevEntities = useGameStore.getState().entities;
-    useGameStore.getState().move(PLAYER_ID, direction);
-    if (useGameStore.getState().entities !== prevEntities) {
-      playerJellyRef.current?.playMove(direction);
+  const jellyRefFor = (id: PlayerId) => {
+    let ref = jellyRefs.get(id);
+    if (!ref) {
+      ref = createRef<JellyHandle>();
+      jellyRefs.set(id, ref);
     }
-  }, []);
+    return ref;
+  };
+
+  const getJelly = useCallback((id: PlayerId) => jellyRefs.get(id)?.current ?? null, [jellyRefs]);
+
+  useBotController(getJelly);
+
+  const handleMove = useCallback(
+    (direction: Direction) => {
+      const prevEntities = useGameStore.getState().entities;
+      useGameStore.getState().move(PLAYER_ID, direction);
+      if (useGameStore.getState().entities !== prevEntities) {
+        getJelly(PLAYER_ID)?.playMove(direction);
+      }
+    },
+    [getJelly]
+  );
 
   const handlePaint = useCallback(() => {
     useGameStore.getState().paint(PLAYER_ID);
-    playerJellyRef.current?.playPaint();
-  }, []);
+    getJelly(PLAYER_ID)?.playPaint();
+  }, [getJelly]);
 
   const { gesture } = useSwipeMovement({ onMove: handleMove, surfaceHeight });
 
@@ -47,9 +65,12 @@ export default function GameScreen() {
   );
 
   const player = entities.find((e) => e.id === PLAYER_ID);
-  const boardEntities: BoardEntityViewModel[] = player
-    ? [{ id: player.id, color: player.color, position: player.position, ref: playerJellyRef }]
-    : [];
+  const boardEntities: BoardEntityViewModel[] = entities.map((e) => ({
+    id: e.id,
+    color: e.color,
+    position: e.position,
+    ref: jellyRefFor(e.id),
+  }));
   const currentCell = player ? grid[player.position.row][player.position.col] : null;
 
   return (
