@@ -32,6 +32,7 @@ describe('parseMatchParams', () => {
   });
 
   it('falls back to the defaults for missing or malformed values', () => {
+    expect(DEFAULT_CONFIG.durationSeconds).toBe(30);
     expect(parseMatchParams({})).toEqual(DEFAULT_CONFIG);
     expect(parseMatchParams({ duration: '', bots: '' })).toEqual(DEFAULT_CONFIG);
     expect(parseMatchParams({ duration: 'abc', bots: 'xyz' })).toEqual(DEFAULT_CONFIG);

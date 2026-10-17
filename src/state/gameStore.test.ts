@@ -171,14 +171,14 @@ describe('held direction', () => {
 
 describe('initMatch', () => {
   it('keeps the previous bot count when only the duration is given', () => {
-    store().initMatch({ durationSeconds: 30, botCount: 4 });
+    store().initMatch({ durationSeconds: 90, botCount: 4 });
     store().step(Number.MAX_SAFE_INTEGER);
     store().step(Number.MAX_SAFE_INTEGER);
 
-    store().initMatch({ durationSeconds: 30 });
+    store().initMatch({ durationSeconds: 90 });
 
     const { config } = store();
-    expect(config).toEqual({ durationSeconds: 30, botCount: 4 });
+    expect(config).toEqual({ durationSeconds: 90, botCount: 4 });
     expect(match().entities).toHaveLength(5);
     expect(match().status).toBe('countdown');
   });
