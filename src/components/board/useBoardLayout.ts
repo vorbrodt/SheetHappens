@@ -1,8 +1,6 @@
 import { createContext, useContext } from 'react';
 import { useWindowDimensions } from 'react-native';
 
-import { BOARD_SIZE } from '../../game/rules';
-
 const BOARD_PADDING = 16;
 
 export interface BoardSpace {
@@ -19,12 +17,13 @@ export interface BoardLayout {
   cellSize: number;
 }
 
-export function useBoardLayout(): BoardLayout {
+// Lays out a board of `gridSize` cells per side; the board's width is the same whatever its size.
+export function useBoardLayout(gridSize: number): BoardLayout {
   const window = useWindowDimensions();
   const space = useContext(BoardSpaceContext) ?? { width: window.width, height: Infinity };
   // The board stays square, so the shorter side decides its size (short phones, iPad portrait).
   const boardWidth = Math.max(0, Math.min(space.width, space.height) - BOARD_PADDING * 2);
-  const cellSize = boardWidth / BOARD_SIZE;
+  const cellSize = boardWidth / gridSize;
 
   return { boardWidth, cellSize };
 }

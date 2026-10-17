@@ -4,8 +4,9 @@ import { Link, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BotCountStepper } from '../components/menu/BotCountStepper';
-import { DURATION_OPTIONS, toMatchParams } from '../components/menu/matchConfig';
+import { BOARD_SIZE_OPTIONS, DURATION_OPTIONS, toMatchParams } from '../components/menu/matchConfig';
 import { MenuBackground } from '../components/menu/MenuBackground';
+import { OptionPills } from '../components/menu/OptionPills';
 import { DEFAULT_CONFIG } from '../game/engine';
 
 // Only Android lets an app close itself: iOS apps must not quit programmatically, and a browser
@@ -15,6 +16,7 @@ const CAN_QUIT = Platform.OS === 'android';
 export default function MenuScreen() {
   const [duration, setDuration] = useState(DEFAULT_CONFIG.durationSeconds);
   const [botCount, setBotCount] = useState(DEFAULT_CONFIG.botCount);
+  const [boardSize, setBoardSize] = useState(DEFAULT_CONFIG.boardSize);
 
   return (
     <View style={styles.screen}>
@@ -28,25 +30,26 @@ export default function MenuScreen() {
 
           <View style={styles.section}>
             <Text style={styles.label}>Match length</Text>
-            <View style={styles.durationRow} accessibilityRole="radiogroup" accessibilityLabel="Match length">
-              {DURATION_OPTIONS.map((seconds) => {
-                const selected = seconds === duration;
-                return (
-                  <Pressable
-                    key={seconds}
-                    style={[styles.durationOption, selected && styles.durationOptionSelected]}
-                    onPress={() => setDuration(seconds)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: selected }}
-                    accessibilityLabel={`${seconds} seconds`}
-                  >
-                    <Text style={[styles.durationText, selected && styles.durationTextSelected]}>
-                      {seconds}s
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <OptionPills
+              label="Match length"
+              options={DURATION_OPTIONS}
+              value={duration}
+              onChange={setDuration}
+              formatOption={(seconds) => `${seconds}s`}
+              describeOption={(seconds) => `${seconds} seconds`}
+            />
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.label}>Map size</Text>
+            <OptionPills
+              label="Map size"
+              options={BOARD_SIZE_OPTIONS}
+              value={boardSize}
+              onChange={setBoardSize}
+              formatOption={(size) => `${size}×${size}`}
+              describeOption={(size) => `${size} by ${size}`}
+            />
           </View>
 
           <View style={styles.section}>
@@ -62,7 +65,7 @@ export default function MenuScreen() {
               onPress={() =>
                 router.push({
                   pathname: '/game',
-                  params: toMatchParams({ durationSeconds: duration, botCount }),
+                  params: toMatchParams({ durationSeconds: duration, botCount, boardSize }),
                 })
               }
               accessibilityRole="button"
@@ -135,31 +138,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     color: '#6B7280',
-  },
-  durationRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  durationOption: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#fff',
-  },
-  durationOptionSelected: {
-    backgroundColor: '#4f46e5',
-    borderColor: '#4f46e5',
-  },
-  durationText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#374151',
-    fontVariant: ['tabular-nums'],
-  },
-  durationTextSelected: {
-    color: '#fff',
   },
   actions: {
     alignSelf: 'stretch',

@@ -39,6 +39,15 @@ describe('chooseBotDirection', () => {
     expect(chooseBotDirection(entities, 'bot')).toBeNull();
   });
 
+  it('uses the board size it is given', () => {
+    const entities = makeEntities([{ id: 'bot', position: { row: 7, col: 7 } }]);
+    const picks = (boardSize: number) =>
+      new Set([0, 0.25, 0.5, 0.75].map((r) => chooseBotDirection(entities, 'bot', () => r, boardSize)));
+
+    expect(picks(BOARD_SIZE)).toEqual(new Set(['up', 'left']));
+    expect(picks(16)).toEqual(new Set(['up', 'down', 'left', 'right']));
+  });
+
   it('can pick every legal direction in open space', () => {
     const entities = makeEntities([{ id: 'bot', position: { row: 3, col: 3 } }]);
     const picks = new Set([0, 0.25, 0.5, 0.75].map((r) => chooseBotDirection(entities, 'bot', () => r)));

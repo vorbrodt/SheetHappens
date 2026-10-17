@@ -16,12 +16,14 @@ export interface BoardEntityViewModel {
 
 interface BoardEntityLayerProps {
   entities: BoardEntityViewModel[];
+  // Cells per side of the board the jellies stand on.
+  gridSize: number;
 }
 
 const SLIDE_TIMING = { duration: JELLY_MOVE_TRAVEL_MS, easing: Easing.inOut(Easing.quad) };
 
-export function BoardEntityLayer({ entities }: BoardEntityLayerProps) {
-  const { cellSize } = useBoardLayout();
+export function BoardEntityLayer({ entities, gridSize }: BoardEntityLayerProps) {
+  const { cellSize } = useBoardLayout(gridSize);
   // The game screen mounts with whatever positions the previous match left in the store and
   // resets them in its own mount effect, so nothing slides until that first frame has passed.
   const slideEnabled = useRef(false);
