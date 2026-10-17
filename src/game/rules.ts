@@ -2,6 +2,9 @@ import { Cell, Direction, Entity, Grid, PlayerId, Position } from './types';
 
 export const BOARD_SIZE = 8;
 
+// Cells saturate fast so players keep moving and colors change hands often.
+export const MAX_INTENSITY = 5;
+
 export const DIRECTION_DELTAS: Record<Direction, Position> = {
   up: { row: -1, col: 0 },
   down: { row: 1, col: 0 },
@@ -67,7 +70,7 @@ export function move(
 
 /**
  * Paints the entity's current cell by `amount`, which works out the same as `amount` paints of 1:
- * an own or neutral cell gains intensity (capped at 100), and a rival's cell loses it, turning
+ * an own or neutral cell gains intensity (capped at MAX_INTENSITY), and a rival's cell loses it, turning
  * neutral at 0 and then the painter's with whatever is left over.
  */
 export function paint(grid: Grid, entities: Entity[], entityId: PlayerId, amount: number = 1): Grid {
@@ -79,13 +82,13 @@ export function paint(grid: Grid, entities: Entity[], entityId: PlayerId, amount
 
   let nextCell: Cell;
   if (cell.owner === null || cell.owner === entityId) {
-    nextCell = { owner: entityId, intensity: Math.min(100, cell.intensity + amount) };
+    nextCell = { owner: entityId, intensity: Math.min(MAX_INTENSITY, cell.intensity + amount) };
   } else if (amount < cell.intensity) {
     nextCell = { owner: cell.owner, intensity: cell.intensity - amount };
   } else if (amount === cell.intensity) {
     nextCell = { owner: null, intensity: 0 };
   } else {
-    nextCell = { owner: entityId, intensity: Math.min(100, amount - cell.intensity) };
+    nextCell = { owner: entityId, intensity: Math.min(MAX_INTENSITY, amount - cell.intensity) };
   }
 
   return grid.map((gridRow, ri) =>
