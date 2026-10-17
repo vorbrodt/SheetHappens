@@ -2,7 +2,7 @@ import { Cell, Direction, Entity, Grid, PlayerId, Position } from './types';
 
 export const BOARD_SIZE = 8;
 
-const DIRECTION_DELTAS: Record<Direction, Position> = {
+export const DIRECTION_DELTAS: Record<Direction, Position> = {
   up: { row: -1, col: 0 },
   down: { row: 1, col: 0 },
   left: { row: 0, col: -1 },
