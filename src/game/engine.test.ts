@@ -22,8 +22,8 @@ const noRandom: Rng = () => {
 };
 
 // A match with `botCount` bots, run past the countdown so it is playing at match time 0.
-function playingMatch(botCount = 0, rng: Rng = noRandom): MatchState {
-  return step(createMatch({ durationSeconds: 60, botCount }, PLAYER), COUNTDOWN_MS, rng);
+function playingMatch(botCount = 0, rng: Rng = noRandom, boardSize = BOARD_SIZE): MatchState {
+  return step(createMatch({ durationSeconds: 60, botCount, boardSize }, PLAYER), COUNTDOWN_MS, rng);
 }
 
 function entity(state: MatchState, id: PlayerId): Entity {
@@ -63,7 +63,7 @@ function run(state: MatchState, ms: number, rng: Rng, frameMs = FRAME_MS, held: 
  */
 function simulateMatch(seed: number): MatchState {
   const rng = createRng(seed);
-  let state = step(createMatch({ durationSeconds: 60, botCount: 5 }, PLAYER), COUNTDOWN_MS, rng);
+  let state = step(createMatch({ durationSeconds: 60, botCount: 5, boardSize: BOARD_SIZE }, PLAYER), COUNTDOWN_MS, rng);
 
   while (state.status !== 'ended') {
     const { row, col } = entity(state, PLAYER).position;
@@ -100,9 +100,44 @@ describe('full simulated match', () => {
   });
 });
 
+describe('board size', () => {
+  it.each([8, 12, 16])('builds a %i-cell-wide board with the bots in its corners', (size) => {
+    const state = createMatch({ durationSeconds: 60, botCount: 3, boardSize: size }, PLAYER);
+    const last = size - 1;
+
+    expect(state.grid).toHaveLength(size);
+    expect(state.grid.every((row) => row.length === size)).toBe(true);
+    expect(state.entities.map((e) => e.position)).toEqual([
+      { row: 0, col: 0 },
+      { row: last, col: last },
+      { row: 0, col: last },
+      { row: last, col: 0 },
+    ]);
+  });
+
+  it('lets the player reach the far edge of a bigger board and no further', () => {
+    let state = playingMatch(0, noRandom, 16);
+    for (let i = 0; i < 20; i++) state = applyInput(state, moveInput('right'), i * PLAYER_MOVE_INTERVAL_MS);
+
+    expect(entity(state, PLAYER).position).toEqual({ row: 0, col: 15 });
+    expect(state.grid[0][15].owner).toBe(PLAYER);
+  });
+
+  it('lets bots move from the far corner of a bigger board', () => {
+    const rng = createRng(1);
+    const { state, events } = run(playingMatch(1, rng, 16), 3_000, rng);
+
+    expect(count(events, 'moved', 'bot-1')).toBeGreaterThan(0);
+    for (const { position } of state.entities) {
+      expect(position.row).toBeLessThan(16);
+      expect(position.col).toBeLessThan(16);
+    }
+  });
+});
+
 describe('applyInput', () => {
   it('ignores input outside play', () => {
-    const counting = createMatch({ durationSeconds: 60, botCount: 0 }, PLAYER);
+    const counting = createMatch({ durationSeconds: 60, botCount: 0, boardSize: BOARD_SIZE }, PLAYER);
     expect(applyInput(counting, moveInput('right'), 0)).toBe(counting);
 
     const paused = setPaused(playingMatch(), true);
@@ -126,7 +161,7 @@ describe('applyInput', () => {
 
 describe('dwell painting', () => {
   it('paints nothing during the countdown', () => {
-    const counting = step(createMatch({ durationSeconds: 60, botCount: 2 }, PLAYER), COUNTDOWN_MS - 1, noRandom);
+    const counting = step(createMatch({ durationSeconds: 60, botCount: 2, boardSize: BOARD_SIZE }, PLAYER), COUNTDOWN_MS - 1, noRandom);
     expect(counting.grid.flat().every((cell) => cell.owner === null)).toBe(true);
   });
 
@@ -213,7 +248,7 @@ describe('per-entity effects', () => {
 
     it('sets how often a bot moves', () => {
       const moves = (moveIntervalMs: number) => {
-        const match = withEntity(createMatch({ durationSeconds: 60, botCount: 1 }, PLAYER), 'bot-1', { moveIntervalMs });
+        const match = withEntity(createMatch({ durationSeconds: 60, botCount: 1, boardSize: BOARD_SIZE }, PLAYER), 'bot-1', { moveIntervalMs });
         const rng = createRng(1);
         const start = step(match, COUNTDOWN_MS, rng);
         return count([...start.events, ...run(start, 3_000, rng).events], 'moved');
@@ -254,7 +289,7 @@ describe('per-entity effects', () => {
     });
 
     it('stops a bot acting until it thaws', () => {
-      const frozen = withEntity(createMatch({ durationSeconds: 60, botCount: 1 }, PLAYER), 'bot-1', {
+      const frozen = withEntity(createMatch({ durationSeconds: 60, botCount: 1, boardSize: BOARD_SIZE }, PLAYER), 'bot-1', {
         frozenUntil: 1_000,
       });
       const { state, events } = run(step(frozen, COUNTDOWN_MS, createRng(1)), 999, createRng(1));

@@ -10,7 +10,7 @@ interface BoardProps {
 }
 
 export function Board({ cells, ownerColors }: BoardProps) {
-  const { boardWidth, cellSize } = useBoardLayout();
+  const { boardWidth, cellSize } = useBoardLayout(cells.length);
 
   return (
     <View style={[styles.board, { width: boardWidth, height: boardWidth }]}>

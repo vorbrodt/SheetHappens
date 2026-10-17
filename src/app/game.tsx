@@ -23,7 +23,7 @@ import { PlayerId } from '../game/types';
 import { useGameStore } from '../state/gameStore';
 
 export default function GameScreen() {
-  const { duration, bots } = useLocalSearchParams<MatchParams>();
+  const { duration, bots, size } = useLocalSearchParams<MatchParams>();
   const grid = useGameStore((s) => s.match.grid);
   const entities = useGameStore((s) => s.match.entities);
   // Rounded up to whole seconds (all the HUD shows), so the every-frame game loop only re-renders
@@ -38,8 +38,8 @@ export default function GameScreen() {
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    useGameStore.getState().initMatch(parseMatchParams({ duration, bots }));
-  }, [duration, bots]);
+    useGameStore.getState().initMatch(parseMatchParams({ duration, bots, size }));
+  }, [duration, bots, size]);
 
   // Reacts to the moment the match ends rather than to the status itself, so a stale "ended"
   // left in the store by the previous match never skips this one. The game-over overlay plays
@@ -163,8 +163,8 @@ export default function GameScreen() {
                 <BoardSpaceProvider value={boardSpace}>
                   <View style={styles.boardWrapper}>
                     <Board cells={grid} ownerColors={ownerColors} />
-                    <PaintSplashLayer />
-                    <BoardEntityLayer entities={boardEntities} />
+                    <PaintSplashLayer gridSize={grid.length} />
+                    <BoardEntityLayer entities={boardEntities} gridSize={grid.length} />
                   </View>
                 </BoardSpaceProvider>
               )}

@@ -3,7 +3,7 @@ import { MatchEvent, MatchState } from '../../game/types';
 import { paintSplashes } from './paintSplashes';
 
 function matchWith(events: MatchEvent[]): MatchState {
-  const match = createMatch({ durationSeconds: 60, botCount: 1 }, 'player');
+  const match = createMatch({ durationSeconds: 60, botCount: 1, boardSize: 8 }, 'player');
   return {
     ...match,
     entities: match.entities.map((e) =>

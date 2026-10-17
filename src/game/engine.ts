@@ -1,10 +1,10 @@
 import { BOT_MOVE_INTERVAL_MS, chooseBotDirection } from './bots';
 import { getStartingPositions } from './placement';
 import { Rng } from './random';
-import { createEmptyGrid, move, paint } from './rules';
+import { BOARD_SIZE, createEmptyGrid, move, paint } from './rules';
 import { BotTimers, Direction, Entity, MatchConfig, MatchEvent, MatchInput, MatchState, PlayerId } from './types';
 
-export const DEFAULT_CONFIG: MatchConfig = { durationSeconds: 30, botCount: 2 };
+export const DEFAULT_CONFIG: MatchConfig = { durationSeconds: 30, botCount: 2, boardSize: BOARD_SIZE };
 
 // Length of the 3-2-1 countdown that runs before every match.
 export const COUNTDOWN_MS = 3_000;
@@ -40,9 +40,10 @@ export function createEntity(entity: NewEntity): Entity {
   };
 }
 
-// A fresh match in the countdown phase: one player at the player start, plus the configured bots.
+// A fresh match in the countdown phase on a board of the configured size: one player at the player
+// start, plus the configured bots. Everything after this reads the board size off the grid.
 export function createMatch(config: MatchConfig, playerId: PlayerId): MatchState {
-  const { player, bots } = getStartingPositions(config.botCount);
+  const { player, bots } = getStartingPositions(config.botCount, config.boardSize);
   const botEntities = bots.map((position, index) =>
     createEntity({
       id: `bot-${index + 1}`,
@@ -53,7 +54,7 @@ export function createMatch(config: MatchConfig, playerId: PlayerId): MatchState
   );
 
   return {
-    grid: createEmptyGrid(),
+    grid: createEmptyGrid(config.boardSize),
     entities: [createEntity({ id: playerId, color: PLAYER_COLOR, position: player }), ...botEntities],
     bots: Object.fromEntries(botEntities.map((bot) => [bot.id, { nextMoveAt: 0 }])),
     status: 'countdown',
@@ -81,7 +82,7 @@ export function applyInput(state: MatchState, input: MatchInput, now: number): M
   if (!entity || now < entity.frozenUntil) return state;
 
   if (now < moveReadyAt(entity)) return state;
-  const moved = move(state.entities, entity.id, input.direction);
+  const moved = move(state.entities, entity.id, input.direction, state.grid.length);
   if (moved === state.entities) return state;
   const entities = moved.map((e) =>
     e.id === entity.id ? { ...e, lastMoveAt: now, dwellPaintAt: now + PAINT_DWELL_MS } : e
@@ -147,7 +148,7 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
         const at = timers.nextMoveAt;
         dueAt = at;
         act = () => {
-          tryMove(entity.id, chooseBotDirection(next.entities, entity.id, rng), at);
+          tryMove(entity.id, chooseBotDirection(next.entities, entity.id, rng, next.grid.length), at);
           // At least 1ms, so a zero interval can't spin forever.
           bots[entity.id] = { nextMoveAt: at + Math.max(1, entity.moveIntervalMs) };
         };

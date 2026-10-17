@@ -1,5 +1,5 @@
 import { Rng } from './random';
-import { canMove, DIRECTIONS } from './rules';
+import { BOARD_SIZE, canMove, DIRECTIONS } from './rules';
 import { Direction, Entity, PlayerId } from './types';
 
 // A bot's default moveIntervalMs.
@@ -13,9 +13,10 @@ export const BOT_MOVE_INTERVAL_MS = 600;
 export function chooseBotDirection(
   entities: Entity[],
   botId: PlayerId,
-  random: Rng = Math.random
+  random: Rng = Math.random,
+  boardSize: number = BOARD_SIZE
 ): Direction | null {
-  const legal = DIRECTIONS.filter((direction) => canMove(entities, botId, direction));
+  const legal = DIRECTIONS.filter((direction) => canMove(entities, botId, direction, boardSize));
   if (legal.length === 0) return null;
 
   return legal[Math.floor(random() * legal.length)];

@@ -38,8 +38,13 @@ interface SplashHandle {
   play(position: Position, color: string): void;
 }
 
-export function PaintSplashLayer() {
-  const { cellSize } = useBoardLayout();
+interface PaintSplashLayerProps {
+  // Cells per side of the board being painted.
+  gridSize: number;
+}
+
+export function PaintSplashLayer({ gridSize }: PaintSplashLayerProps) {
+  const { cellSize } = useBoardLayout(gridSize);
   const slots = useRef<(SplashHandle | null)[]>([]);
   const nextSlot = useRef(0);
 

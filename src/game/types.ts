@@ -35,6 +35,8 @@ export type Grid = Cell[][];
 export interface MatchConfig {
   durationSeconds: number;
   botCount: number;
+  // Cells per side of the square board.
+  boardSize: number;
 }
 
 export type MatchStatus = 'countdown' | 'playing' | 'paused' | 'ended';
