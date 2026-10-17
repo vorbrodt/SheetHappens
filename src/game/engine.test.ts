@@ -1,5 +1,14 @@
-import { BOT_MOVE_INTERVAL_MS, BOT_PAINT_INTERVAL_MS } from './bots';
-import { applyInput, COUNTDOWN_MS, createMatch, PLAYER_MOVE_INTERVAL_MS, setPaused, step } from './engine';
+import { BOT_MOVE_INTERVAL_MS } from './bots';
+import {
+  applyInput,
+  COUNTDOWN_MS,
+  createMatch,
+  HeldDirections,
+  PAINT_DWELL_MS,
+  PLAYER_MOVE_INTERVAL_MS,
+  setPaused,
+  step,
+} from './engine';
 import { createRng, Rng } from './random';
 import { BOARD_SIZE, MAX_INTENSITY, rankEntities } from './rules';
 import { Direction, Entity, MatchEvent, MatchState, PlayerId } from './types';
@@ -29,40 +38,39 @@ function moveInput(direction: Direction, entityId = PLAYER) {
   return { type: 'move', entityId, direction } as const;
 }
 
-function paintInput(taps = 1, entityId = PLAYER) {
-  return { type: 'paint', entityId, taps } as const;
+// Moves the entity at the current match time, as a swipe would.
+function swipe(state: MatchState, direction: Direction, entityId = PLAYER): MatchState {
+  return applyInput(state, moveInput(direction, entityId), state.elapsedMs);
+}
+
+function count(events: MatchEvent[], type: MatchEvent['type'], entityId?: PlayerId) {
+  return events.filter((e) => e.type === type && (entityId === undefined || e.entityId === entityId)).length;
 }
 
 // Steps `ms` of play in `frameMs` frames, collecting every event along the way.
-function run(state: MatchState, ms: number, rng: Rng, frameMs = FRAME_MS) {
+function run(state: MatchState, ms: number, rng: Rng, frameMs = FRAME_MS, held: HeldDirections = {}) {
   const events: MatchEvent[] = [];
   for (let t = 0; t < ms; t += frameMs) {
-    state = step(state, Math.min(frameMs, ms - t), rng);
+    state = step(state, Math.min(frameMs, ms - t), rng, held);
     events.push(...state.events);
   }
   return { state, events };
 }
 
 /**
- * A full 60s match against 5 bots. The player sweeps the board in a snake pattern — swiping every
- * frame like a held swipe, so the engine sets the pace — and double-taps paint every 100ms.
+ * A full 60s match against 5 bots. The player holds a swipe that sweeps the board in a snake
+ * pattern, so the engine sets the pace, and paints by stepping onto cells.
  */
 function simulateMatch(seed: number): MatchState {
   const rng = createRng(seed);
   let state = step(createMatch({ durationSeconds: 60, botCount: 5 }, PLAYER), COUNTDOWN_MS, rng);
-  let lastPaintAt = -Infinity;
 
   while (state.status !== 'ended') {
-    state = step(state, FRAME_MS, rng);
     const { row, col } = entity(state, PLAYER).position;
     const sweepingRight = row % 2 === 0;
     const atRowEnd = sweepingRight ? col === BOARD_SIZE - 1 : col === 0;
     const direction: Direction = atRowEnd ? (row === BOARD_SIZE - 1 ? 'up' : 'down') : sweepingRight ? 'right' : 'left';
-    state = applyInput(state, moveInput(direction), state.elapsedMs);
-    if (state.elapsedMs - lastPaintAt >= 100) {
-      state = applyInput(state, paintInput(2), state.elapsedMs);
-      lastPaintAt = state.elapsedMs;
-    }
+    state = step(state, FRAME_MS, rng, { [PLAYER]: direction });
   }
   return state;
 }
@@ -95,29 +103,93 @@ describe('full simulated match', () => {
 describe('applyInput', () => {
   it('ignores input outside play', () => {
     const counting = createMatch({ durationSeconds: 60, botCount: 0 }, PLAYER);
-    expect(applyInput(counting, paintInput(), 0)).toBe(counting);
+    expect(applyInput(counting, moveInput('right'), 0)).toBe(counting);
 
     const paused = setPaused(playingMatch(), true);
     expect(applyInput(paused, moveInput('right'), 0)).toBe(paused);
   });
 
-  it('ignores unknown entities and paints without taps', () => {
+  it('ignores unknown entities and blocked moves', () => {
     const state = playingMatch();
-    expect(applyInput(state, paintInput(1, 'nobody'), 0)).toBe(state);
-    expect(applyInput(state, paintInput(0), 0)).toBe(state);
+    expect(applyInput(state, moveInput('right', 'nobody'), 0)).toBe(state);
+    expect(applyInput(state, moveInput('up'), 0)).toBe(state);
   });
 
-  it('reports what happened as events', () => {
-    let state = applyInput(playingMatch(), moveInput('right'), 0);
-    expect(state.events).toEqual([{ type: 'moved', entityId: PLAYER, direction: 'right' }]);
+  it('reports a move and the paint on the cell moved onto as events', () => {
+    const state = swipe(playingMatch(), 'right');
+    expect(state.events).toEqual([
+      { type: 'moved', entityId: PLAYER, direction: 'right' },
+      { type: 'painted', entityId: PLAYER },
+    ]);
+  });
+});
 
-    state = applyInput(state, paintInput(), 0);
+describe('dwell painting', () => {
+  it('paints nothing during the countdown', () => {
+    const counting = step(createMatch({ durationSeconds: 60, botCount: 2 }, PLAYER), COUNTDOWN_MS - 1, noRandom);
+    expect(counting.grid.flat().every((cell) => cell.owner === null)).toBe(true);
+  });
+
+  it('paints every starting cell the moment play starts', () => {
+    const state = playingMatch();
+    expect(state.grid[0][0]).toEqual({ owner: PLAYER, intensity: 1 });
     expect(state.events).toEqual([{ type: 'painted', entityId: PLAYER }]);
   });
 
-  it('applies all taps of a multi-tap paint', () => {
-    const state = applyInput(playingMatch(), paintInput(3), 0);
-    expect(state.grid[0][0]).toEqual({ owner: PLAYER, intensity: 3 });
+  it('paints again every PAINT_DWELL_MS while the entity stands still', () => {
+    let state = step(playingMatch(), PAINT_DWELL_MS - 1, noRandom);
+    expect(state.grid[0][0].intensity).toBe(1);
+    expect(state.events).toEqual([]);
+
+    state = step(state, 1, noRandom);
+    expect(state.grid[0][0].intensity).toBe(2);
+    expect(state.events).toEqual([{ type: 'painted', entityId: PLAYER }]);
+
+    state = step(state, PAINT_DWELL_MS, noRandom);
+    expect(state.grid[0][0].intensity).toBe(3);
+  });
+
+  it('paints the cell moved onto at once and restarts the dwell timer there', () => {
+    let state = swipe(step(playingMatch(), 300, noRandom), 'right');
+    expect(state.grid[0][1]).toEqual({ owner: PLAYER, intensity: 1 });
+
+    // The old cell's paint, due at 500ms, never comes; the new cell's is due 500ms after the move.
+    state = step(state, PAINT_DWELL_MS - 1, noRandom);
+    expect(state.grid[0][0].intensity).toBe(1);
+    expect(state.grid[0][1].intensity).toBe(1);
+    state = step(state, 1, noRandom);
+    expect(state.grid[0][1].intensity).toBe(2);
+  });
+
+  it('paints on every entry, not just the first visit', () => {
+    let state = swipe(playingMatch(), 'right');
+    state = step(state, PLAYER_MOVE_INTERVAL_MS, noRandom);
+    state = swipe(state, 'left');
+    expect(state.grid[0][0].intensity).toBe(2);
+    expect(state.grid[0][1].intensity).toBe(1);
+  });
+
+  it('accrues no paints while paused', () => {
+    let state = step(playingMatch(), 400, noRandom);
+    state = setPaused(state, true);
+    state = step(state, 5_000, noRandom);
+    state = setPaused(state, false);
+
+    state = step(state, PAINT_DWELL_MS - 400 - 1, noRandom);
+    expect(state.grid[0][0].intensity).toBe(1);
+    state = step(state, 1, noRandom);
+    expect(state.grid[0][0].intensity).toBe(2);
+  });
+
+  it('lands held moves and dwell paints at their due times, whatever the frame size', () => {
+    const start = withEntity(playingMatch(), PLAYER, { moveIntervalMs: 600 });
+    const held = { [PLAYER]: 'right' } as const;
+    const byFrames = run(start, 1_200, noRandom, FRAME_MS, held);
+    const inOneGo = run(start, 1_200, noRandom, 1_200, held);
+
+    // Moves at 0, 600 and 1200ms; the first two cells moved onto are painted on entry and 500ms on.
+    expect(byFrames.state.grid[0].slice(0, 4).map((cell) => cell.intensity)).toEqual([1, 2, 2, 1]);
+    expect(inOneGo.state).toEqual({ ...byFrames.state, events: inOneGo.state.events });
   });
 });
 
@@ -140,49 +212,56 @@ describe('per-entity effects', () => {
     });
 
     it('sets how often a bot moves', () => {
-      const start = playingMatch(1, createRng(1));
-      const moves = (state: MatchState) =>
-        run(state, 3_000, createRng(1)).events.filter((e) => e.type === 'moved').length;
+      const moves = (moveIntervalMs: number) => {
+        const match = withEntity(createMatch({ durationSeconds: 60, botCount: 1 }, PLAYER), 'bot-1', { moveIntervalMs });
+        const rng = createRng(1);
+        const start = step(match, COUNTDOWN_MS, rng);
+        return count([...start.events, ...run(start, 3_000, rng).events], 'moved');
+      };
 
-      // Due at 0ms and every interval after, up to and including 3000ms.
-      expect(moves(start)).toBe(1 + 3_000 / BOT_MOVE_INTERVAL_MS);
-      expect(moves(withEntity(start, 'bot-1', { moveIntervalMs: BOT_MOVE_INTERVAL_MS / 2 }))).toBe(
-        1 + (2 * 3_000) / BOT_MOVE_INTERVAL_MS
-      );
+      // Due at 0ms, as play starts, and every interval after, up to and including 3000ms.
+      expect(moves(BOT_MOVE_INTERVAL_MS)).toBe(1 + 3_000 / BOT_MOVE_INTERVAL_MS);
+      expect(moves(BOT_MOVE_INTERVAL_MS / 2)).toBe(1 + (2 * 3_000) / BOT_MOVE_INTERVAL_MS);
     });
   });
 
   describe('paintMultiplier', () => {
-    it('scales every paint tap', () => {
+    it('scales every paint', () => {
       let state = withEntity(playingMatch(), PLAYER, { paintMultiplier: 2 });
-      state = applyInput(state, paintInput(), 0);
-      expect(state.grid[0][0].intensity).toBe(2);
+      state = step(state, PAINT_DWELL_MS, noRandom);
+      expect(state.grid[0][0].intensity).toBe(1 + 2);
 
-      state = applyInput(state, paintInput(1), 0);
-      expect(state.grid[0][0].intensity).toBe(4);
-
-      state = applyInput(state, paintInput(1), 0);
+      state = step(state, PAINT_DWELL_MS, noRandom);
       expect(state.grid[0][0].intensity).toBe(MAX_INTENSITY);
+
+      state = swipe(state, 'right');
+      expect(state.grid[0][1].intensity).toBe(2);
     });
   });
 
   describe('frozenUntil', () => {
-    it('ignores the entity’s moves and paints until it thaws', () => {
-      const state = withEntity(playingMatch(), PLAYER, { frozenUntil: 1_000 });
+    it('ignores the entity’s moves and skips its paints until it thaws', () => {
+      let state = withEntity(playingMatch(), PLAYER, { frozenUntil: 1_000 });
       expect(applyInput(state, moveInput('right'), 999)).toBe(state);
-      expect(applyInput(state, paintInput(), 999)).toBe(state);
+      state = step(state, 999, noRandom);
+      expect(state.grid[0][0].intensity).toBe(1);
 
-      const thawed = applyInput(state, moveInput('right'), 1_000);
+      // The paint due at 1000ms lands; the one due at 500ms is not made up.
+      state = step(state, 1, noRandom);
+      expect(state.grid[0][0].intensity).toBe(2);
+      const thawed = swipe(state, 'right');
       expect(entity(thawed, PLAYER).position).toEqual({ row: 0, col: 1 });
     });
 
     it('stops a bot acting until it thaws', () => {
-      const frozen = withEntity(playingMatch(1, createRng(1)), 'bot-1', { frozenUntil: 1_000 });
-      const { state, events } = run(frozen, 999, createRng(1));
-      expect(events).toEqual([]);
-      expect(state.grid.flat().every((cell) => cell.owner === null)).toBe(true);
+      const frozen = withEntity(createMatch({ durationSeconds: 60, botCount: 1 }, PLAYER), 'bot-1', {
+        frozenUntil: 1_000,
+      });
+      const { state, events } = run(step(frozen, COUNTDOWN_MS, createRng(1)), 999, createRng(1));
+      expect(events.filter((e) => e.entityId === 'bot-1')).toEqual([]);
+      expect(state.grid.flat().some((cell) => cell.owner === 'bot-1')).toBe(false);
 
-      expect(run(state, 100, createRng(1)).events.length).toBeGreaterThan(0);
+      expect(count(run(state, 100, createRng(1)).events, 'painted', 'bot-1')).toBeGreaterThan(0);
     });
   });
 });
@@ -202,10 +281,12 @@ describe('step', () => {
     const byFrames = run(start, 1_200, createRng(3));
     const inOneGo = run(start, 1_200, createRng(3), 1_200);
 
-    const count = (events: MatchEvent[], type: MatchEvent['type']) => events.filter((e) => e.type === type).length;
-    // Due at 0, 600 and 1200ms; paints every 200ms from 0.
-    expect(count(byFrames.events, 'moved')).toBe(1 + 1_200 / BOT_MOVE_INTERVAL_MS);
-    expect(count(byFrames.events, 'painted')).toBe(1 + 1_200 / BOT_PAINT_INTERVAL_MS);
+    // Moves at 600 and 1200ms (the one at 0 came as play started), each painting the cell entered,
+    // plus a dwell paint 500ms after each of the moves at 0 and 600ms.
+    expect(count(byFrames.events, 'moved', 'bot-1')).toBe(1_200 / BOT_MOVE_INTERVAL_MS);
+    expect(count(byFrames.events, 'painted', 'bot-1')).toBe(4);
+    // Bots paint at the player's rate: the player, standing still, paints at 500 and 1000ms.
+    expect(count(byFrames.events, 'painted', PLAYER)).toBe(Math.floor(1_200 / PAINT_DWELL_MS));
     expect(inOneGo.state).toEqual({ ...byFrames.state, events: inOneGo.state.events });
   });
 });

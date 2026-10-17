@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { applyInput, createMatch, DEFAULT_CONFIG, moveReadyAt, setPaused, step } from '../game/engine';
+import { applyInput, createMatch, DEFAULT_CONFIG, setPaused, step } from '../game/engine';
 import { Direction, MatchConfig, MatchInput, MatchState, PlayerId } from '../game/types';
 
 // The id the player on this device plays under in single-player matches.
@@ -69,20 +69,10 @@ export const useGameStore = create<GameStore>()((set, get) => {
 
     step: (deltaMs) => {
       const { match, heldDirection, localPlayerId } = get();
-      let next = step(match, deltaMs, Math.random);
-
-      const player = next.entities.find((e) => e.id === localPlayerId);
-      if (heldDirection && player) {
-        // Stamped with the moment the next move came due within this step, so a held swipe repeats
-        // at exactly the player's move interval rather than on frame boundaries.
-        const dueAt = Math.max(moveReadyAt(player), match.elapsedMs);
-        if (dueAt <= next.elapsedMs) {
-          const moved = applyInput(next, { type: 'move', entityId: localPlayerId, direction: heldDirection }, dueAt);
-          if (moved !== next) next = { ...moved, events: [...next.events, ...moved.events] };
-        }
-      }
-
-      setMatch(next);
+      // The engine repeats the held move at exactly the player's move interval, stamped with the
+      // moment it came due, rather than on frame boundaries.
+      const held = heldDirection ? { [localPlayerId]: heldDirection } : {};
+      setMatch(step(match, deltaMs, Math.random, held));
     },
 
     setPaused: (reason, paused) => {

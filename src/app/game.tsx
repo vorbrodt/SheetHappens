@@ -11,7 +11,6 @@ import { BoardSpace, BoardSpaceProvider } from '../components/board/useBoardLayo
 import { useSwipeMovement } from '../components/gestures/useSwipeMovement';
 import { IntensityReadout } from '../components/hud/IntensityReadout';
 import { MatchHud } from '../components/hud/MatchHud';
-import { PAINT_BUTTON_SIZE, PaintButton } from '../components/hud/PaintButton';
 import { PauseDialog } from '../components/hud/PauseDialog';
 import { JellyHandle } from '../components/jelly/types';
 import { CountdownOverlay } from '../components/match/CountdownOverlay';
@@ -21,8 +20,6 @@ import { MatchParams, parseMatchParams } from '../components/menu/matchConfig';
 import { cellsOwned, score } from '../game/rules';
 import { PlayerId } from '../game/types';
 import { useGameStore } from '../state/gameStore';
-
-const CONTROLS_MARGIN = 16;
 
 export default function GameScreen() {
   const { duration, bots } = useLocalSearchParams<MatchParams>();
@@ -101,11 +98,6 @@ export default function GameScreen() {
     );
   }, []);
 
-  const handlePaint = useCallback(() => {
-    const { dispatch, localPlayerId: entityId } = useGameStore.getState();
-    dispatch({ type: 'paint', entityId, taps: 1 });
-  }, []);
-
   const holdDirection = useGameStore((s) => s.holdDirection);
   const { gesture } = useSwipeMovement({ onDirectionChange: holdDirection });
 
@@ -170,16 +162,8 @@ export default function GameScreen() {
                 </BoardSpaceProvider>
               )}
             </View>
-            {/* Reserves the paint button's row, so the board is never sized under it. */}
-            <View style={styles.controlsRow} />
           </View>
         </GestureDetector>
-        {/* Sits outside the swipe surface so paint taps never reach the pan gesture. */}
-        {player && (
-          <View style={styles.paintButton}>
-            <PaintButton color={player.color} onPaint={handlePaint} />
-          </View>
-        )}
       </View>
       <CountdownOverlay />
       {pauseOpen && <PauseDialog onResume={resume} onLeave={leave} />}
@@ -209,13 +193,5 @@ const styles = StyleSheet.create({
   },
   boardWrapper: {
     position: 'relative',
-  },
-  controlsRow: {
-    height: PAINT_BUTTON_SIZE + CONTROLS_MARGIN,
-  },
-  paintButton: {
-    position: 'absolute',
-    right: CONTROLS_MARGIN,
-    bottom: CONTROLS_MARGIN,
   },
 });

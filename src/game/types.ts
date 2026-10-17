@@ -14,12 +14,15 @@ export interface Entity {
   // Per-entity effects, all on the match clock (ms of play). Power-ups will change these later.
   // The shortest gap allowed between two of this entity's moves.
   moveIntervalMs: number;
-  // Intensity applied per paint tap.
+  // Intensity applied per paint.
   paintMultiplier: number;
   // The entity ignores its own inputs until the match clock reaches this time.
   frozenUntil: number;
   // When this entity last moved, or null if it has not moved yet this match.
   lastMoveAt: number | null;
+  // When this entity next paints the cell it is standing on. Entering a cell paints it straight
+  // away and pushes this to PAINT_DWELL_MS later; standing still repeats it every PAINT_DWELL_MS.
+  dwellPaintAt: number;
 }
 
 export interface Cell {
@@ -39,12 +42,9 @@ export type MatchStatus = 'countdown' | 'playing' | 'paused' | 'ended';
 // When a bot next acts, on the match clock.
 export interface BotTimers {
   nextMoveAt: number;
-  nextPaintAt: number;
 }
 
-export type MatchInput =
-  | { type: 'move'; entityId: PlayerId; direction: Direction }
-  | { type: 'paint'; entityId: PlayerId; taps: number };
+export type MatchInput = { type: 'move'; entityId: PlayerId; direction: Direction };
 
 // What an input or step changed, so the UI can animate it.
 export type MatchEvent =

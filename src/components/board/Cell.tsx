@@ -9,7 +9,7 @@ interface CellProps {
   size: number;
 }
 
-// Memoized so a paint tap only re-renders the one cell that changed.
+// Memoized so a paint only re-renders the one cell that changed.
 export const Cell = memo(function Cell({ ownerColor, intensity, size }: CellProps) {
   return (
     <View

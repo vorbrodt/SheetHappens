@@ -1,8 +1,8 @@
-import { BOT_MOVE_INTERVAL_MS, BOT_PAINT_INTERVAL_MS, chooseBotDirection } from './bots';
+import { BOT_MOVE_INTERVAL_MS, chooseBotDirection } from './bots';
 import { getStartingPositions } from './placement';
 import { Rng } from './random';
 import { createEmptyGrid, move, paint } from './rules';
-import { BotTimers, Entity, MatchConfig, MatchEvent, MatchInput, MatchState, PlayerId } from './types';
+import { BotTimers, Direction, Entity, MatchConfig, MatchEvent, MatchInput, MatchState, PlayerId } from './types';
 
 export const DEFAULT_CONFIG: MatchConfig = { durationSeconds: 30, botCount: 2 };
 
@@ -11,6 +11,9 @@ export const COUNTDOWN_MS = 3_000;
 
 // A player's default moveIntervalMs: how fast a held swipe repeats.
 export const PLAYER_MOVE_INTERVAL_MS = 200;
+
+// How long an entity stands on a cell for each paint after the one it gets for entering it.
+export const PAINT_DWELL_MS = 500;
 
 const PLAYER_COLOR = '#EC4899';
 // Kept clear of the player's pink and the neutral cell gray.
@@ -21,13 +24,18 @@ const NO_EVENTS: MatchEvent[] = [];
 
 type NewEntity = Pick<Entity, 'id' | 'color' | 'position'> & Partial<Entity>;
 
-// An entity with no effects active: player move speed, single paint, not frozen.
+// The directions entities are holding a swipe in. Each one's move repeats whenever it comes due.
+export type HeldDirections = Readonly<Record<PlayerId, Direction>>;
+
+// An entity with no effects active: player move speed, single paint, not frozen. Its dwell paint
+// is due at match time 0, so its starting cell counts as entered the moment play starts.
 export function createEntity(entity: NewEntity): Entity {
   return {
     moveIntervalMs: PLAYER_MOVE_INTERVAL_MS,
     paintMultiplier: 1,
     frozenUntil: 0,
     lastMoveAt: null,
+    dwellPaintAt: 0,
     ...entity,
   };
 }
@@ -47,7 +55,7 @@ export function createMatch(config: MatchConfig, playerId: PlayerId): MatchState
   return {
     grid: createEmptyGrid(),
     entities: [createEntity({ id: playerId, color: PLAYER_COLOR, position: player }), ...botEntities],
-    bots: Object.fromEntries(botEntities.map((bot) => [bot.id, { nextMoveAt: 0, nextPaintAt: 0 }])),
+    bots: Object.fromEntries(botEntities.map((bot) => [bot.id, { nextMoveAt: 0 }])),
     status: 'countdown',
     countdownMs: COUNTDOWN_MS,
     remainingMs: config.durationSeconds * 1000,
@@ -65,68 +73,97 @@ export function moveReadyAt(entity: Entity): number {
  * Applies one entity's input at `now` on the match clock. Inputs are ignored — the same state
  * comes back — unless the match is playing and the entity exists and is not frozen. A move is
  * also ignored when it comes sooner than the entity's moveIntervalMs after its last move, or is
- * blocked; a paint applies `taps` × the entity's paintMultiplier.
+ * blocked; otherwise it paints the cell moved onto and restarts the entity's dwell timer there.
  */
 export function applyInput(state: MatchState, input: MatchInput, now: number): MatchState {
   if (state.status !== 'playing') return state;
   const entity = state.entities.find((e) => e.id === input.entityId);
   if (!entity || now < entity.frozenUntil) return state;
 
-  if (input.type === 'move') {
-    if (now < moveReadyAt(entity)) return state;
-    const moved = move(state.entities, entity.id, input.direction);
-    if (moved === state.entities) return state;
-    return {
-      ...state,
-      entities: moved.map((e) => (e.id === entity.id ? { ...e, lastMoveAt: now } : e)),
-      events: [{ type: 'moved', entityId: entity.id, direction: input.direction }],
-    };
-  }
-
-  const taps = Math.floor(input.taps);
-  if (!(taps >= 1)) return state;
+  if (now < moveReadyAt(entity)) return state;
+  const moved = move(state.entities, entity.id, input.direction);
+  if (moved === state.entities) return state;
+  const entities = moved.map((e) =>
+    e.id === entity.id ? { ...e, lastMoveAt: now, dwellPaintAt: now + PAINT_DWELL_MS } : e
+  );
   return {
     ...state,
-    grid: paint(state.grid, state.entities, entity.id, taps * entity.paintMultiplier),
-    events: [{ type: 'painted', entityId: entity.id }],
+    grid: paint(state.grid, entities, entity.id, entity.paintMultiplier),
+    entities,
+    events: [
+      { type: 'moved', entityId: entity.id, direction: input.direction },
+      { type: 'painted', entityId: entity.id },
+    ],
   };
 }
 
 /**
- * Lets every bot act on whatever came due by the match clock: a move in a random legal direction
- * every moveIntervalMs (a boxed-in bot waits for its next turn) and a paint every
- * BOT_PAINT_INTERVAL_MS. Each action is stamped with the time it was due rather than the end of
- * the step, so bots keep their exact pace whatever the step size.
+ * Runs everything that came due by the match clock, in time order: every entity's dwell paints,
+ * every bot's moves (a random legal direction every moveIntervalMs; a boxed-in bot waits for its
+ * next turn) and the moves of every held direction, from `from` at the earliest. Each action is
+ * stamped with the time it was due rather than the end of the step, so entities keep their exact
+ * pace whatever the step size. A paint due at the same time as a move goes first, since the entity
+ * did stand there the full PAINT_DWELL_MS. A frozen entity's paints are skipped, not saved up.
  */
-function runBots(state: MatchState, rng: Rng): MatchState {
+function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections): MatchState {
   let next = state;
   const events: MatchEvent[] = [];
-  const bots: Record<PlayerId, BotTimers> = {};
+  const bots: Record<PlayerId, BotTimers> = { ...state.bots };
+  // A held move that is ignored waits for the next step rather than retrying forever at one time.
+  const stalled = new Set<PlayerId>();
 
-  const act = (input: MatchInput, at: number) => {
-    const after = applyInput(next, input, at);
-    if (after === next) return;
-    events.push(...after.events);
-    next = after;
+  const dwellPaint = (entity: Entity, at: number) => {
+    const entities = next.entities.map((e) => (e.id === entity.id ? { ...e, dwellPaintAt: at + PAINT_DWELL_MS } : e));
+    if (at < entity.frozenUntil) {
+      next = { ...next, entities };
+      return;
+    }
+    next = { ...next, grid: paint(next.grid, entities, entity.id, entity.paintMultiplier), entities };
+    events.push({ type: 'painted', entityId: entity.id });
   };
 
-  for (const [botId, timers] of Object.entries(state.bots)) {
-    let { nextMoveAt, nextPaintAt } = timers;
-    while (Math.min(nextMoveAt, nextPaintAt) <= next.elapsedMs) {
-      const bot = next.entities.find((e) => e.id === botId);
-      if (!bot) break;
-      // Moves go first when both are due, as they always have.
-      if (nextMoveAt <= nextPaintAt) {
-        const direction = chooseBotDirection(next.entities, botId, rng);
-        if (direction) act({ type: 'move', entityId: botId, direction }, nextMoveAt);
-        // At least 1ms, so a zero interval can't spin forever.
-        nextMoveAt += Math.max(1, bot.moveIntervalMs);
-      } else {
-        act({ type: 'paint', entityId: botId, taps: 1 }, nextPaintAt);
-        nextPaintAt += BOT_PAINT_INTERVAL_MS;
+  const tryMove = (entityId: PlayerId, direction: Direction | null, at: number) => {
+    const after = direction ? applyInput(next, { type: 'move', entityId, direction }, at) : next;
+    if (after === next) return false;
+    events.push(...after.events);
+    next = after;
+    return true;
+  };
+
+  for (;;) {
+    let dueAt = Infinity;
+    let act: (() => void) | null = null;
+
+    for (const entity of next.entities) {
+      if (entity.dwellPaintAt < dueAt) {
+        dueAt = entity.dwellPaintAt;
+        act = () => dwellPaint(entity, entity.dwellPaintAt);
       }
     }
-    bots[botId] = { nextMoveAt, nextPaintAt };
+    for (const entity of next.entities) {
+      const timers = bots[entity.id];
+      const direction = held[entity.id];
+      if (timers && timers.nextMoveAt < dueAt) {
+        const at = timers.nextMoveAt;
+        dueAt = at;
+        act = () => {
+          tryMove(entity.id, chooseBotDirection(next.entities, entity.id, rng), at);
+          // At least 1ms, so a zero interval can't spin forever.
+          bots[entity.id] = { nextMoveAt: at + Math.max(1, entity.moveIntervalMs) };
+        };
+      } else if (!timers && direction && !stalled.has(entity.id)) {
+        const at = Math.max(moveReadyAt(entity), from);
+        if (at < dueAt) {
+          dueAt = at;
+          act = () => {
+            if (!tryMove(entity.id, direction, at)) stalled.add(entity.id);
+          };
+        }
+      }
+    }
+
+    if (!act || dueAt > next.elapsedMs) break;
+    act();
   }
 
   return { ...next, bots, events: events.length > 0 ? events : NO_EVENTS };
@@ -134,20 +171,25 @@ function runBots(state: MatchState, rng: Rng): MatchState {
 
 /**
  * Advances the match by `deltaMs` of wall-clock time: runs the pre-match countdown and then starts
- * play; while playing, runs the match clock and the bots and ends the match when the clock hits
- * 0. A paused or ended match comes back unchanged.
+ * play; while playing, runs the match clock, the bots, dwell paints and the `held` swipes, and
+ * ends the match when the clock hits 0. Whatever is due at match time 0 — every entity's paint on
+ * its starting cell first — happens in the step that ends the countdown. A paused or ended match
+ * comes back unchanged.
  */
-export function step(state: MatchState, deltaMs: number, rng: Rng): MatchState {
+export function step(state: MatchState, deltaMs: number, rng: Rng, held: HeldDirections = {}): MatchState {
   if (state.status === 'countdown') {
     const countdownMs = Math.max(0, state.countdownMs - deltaMs);
-    return { ...state, countdownMs, status: countdownMs === 0 ? 'playing' : 'countdown', events: NO_EVENTS };
+    if (countdownMs > 0) return { ...state, countdownMs, events: NO_EVENTS };
+    return runDue({ ...state, countdownMs, status: 'playing' }, state.elapsedMs, rng, held);
   }
   if (state.status !== 'playing') return state;
 
   const playedMs = Math.min(deltaMs, state.remainingMs);
-  const next = runBots(
+  const next = runDue(
     { ...state, remainingMs: state.remainingMs - playedMs, elapsedMs: state.elapsedMs + playedMs },
-    rng
+    state.elapsedMs,
+    rng,
+    held
   );
   return next.remainingMs === 0 ? { ...next, status: 'ended' } : next;
 }
