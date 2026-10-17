@@ -4,7 +4,7 @@ import { Rng } from './random';
 import { createEmptyGrid, move, paint } from './rules';
 import { BotTimers, Entity, MatchConfig, MatchEvent, MatchInput, MatchState, PlayerId } from './types';
 
-export const DEFAULT_CONFIG: MatchConfig = { durationSeconds: 60, botCount: 2 };
+export const DEFAULT_CONFIG: MatchConfig = { durationSeconds: 30, botCount: 2 };
 
 // Length of the 3-2-1 countdown that runs before every match.
 export const COUNTDOWN_MS = 3_000;

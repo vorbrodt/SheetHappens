@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Board } from '../components/board/Board';
 import { BoardEntityLayer, BoardEntityViewModel } from '../components/board/BoardEntityLayer';
+import { PaintSplashLayer } from '../components/board/PaintSplashLayer';
 import { BoardSpace, BoardSpaceProvider } from '../components/board/useBoardLayout';
 import { useSwipeMovement } from '../components/gestures/useSwipeMovement';
 import { IntensityReadout } from '../components/hud/IntensityReadout';
@@ -69,28 +70,19 @@ export default function GameScreen() {
 
   const openPause = useCallback(() => {
     if (useGameStore.getState().match.status === 'ended') return;
-    useGameStore.getState().setPaused(true);
+    useGameStore.getState().setPaused('menu', true);
     setPauseOpen(true);
   }, []);
 
   const resume = useCallback(() => {
     setPauseOpen(false);
-    useGameStore.getState().setPaused(false);
+    useGameStore.getState().setPaused('menu', false);
   }, []);
 
   const leave = useCallback(() => {
     setPauseOpen(false);
     router.dismissTo('/');
   }, []);
-
-  // The clock resumes (match or countdown) when the app returns to the foreground, so re-pause
-  // while asking.
-  useEffect(() => {
-    if (!pauseOpen) return;
-    return useGameStore.subscribe((state) => {
-      if (state.match.status === 'playing' || state.match.status === 'countdown') state.setPaused(true);
-    });
-  }, [pauseOpen]);
 
   // Android back goes through the same pause dialog, and closes it again when it is open.
   useEffect(() => {
@@ -172,6 +164,7 @@ export default function GameScreen() {
                 <BoardSpaceProvider value={boardSpace}>
                   <View style={styles.boardWrapper}>
                     <Board cells={grid} ownerColors={ownerColors} />
+                    <PaintSplashLayer />
                     <BoardEntityLayer entities={boardEntities} />
                   </View>
                 </BoardSpaceProvider>

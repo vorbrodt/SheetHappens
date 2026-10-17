@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BotCountStepper } from '../components/menu/BotCountStepper';
@@ -55,17 +55,21 @@ export default function MenuScreen() {
           </View>
 
           <View style={styles.actions}>
-            <Link
-              href={{
-                pathname: '/game',
-                params: toMatchParams({ durationSeconds: duration, botCount }),
-              }}
-              asChild
+            {/* A plain Pressable rather than `Link asChild`: the Link's Slot spreads the child's
+                style as an object, which drops a function style and left the button invisible. */}
+            <Pressable
+              style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+              onPress={() =>
+                router.push({
+                  pathname: '/game',
+                  params: toMatchParams({ durationSeconds: duration, botCount }),
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Start match"
             >
-              <Pressable style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}>
-                <Text style={styles.buttonText}>Start</Text>
-              </Pressable>
-            </Link>
+              <Text style={styles.buttonText}>Start</Text>
+            </Pressable>
             {CAN_QUIT && (
               <Pressable style={styles.secondaryButton} onPress={() => BackHandler.exitApp()}>
                 <Text style={styles.secondaryButtonText}>Quit</Text>

@@ -5,7 +5,7 @@ export const BOARD_SIZE = 8;
 // Cells saturate fast so players keep moving and colors change hands often.
 export const MAX_INTENSITY = 5;
 
-const DIRECTION_DELTAS: Record<Direction, Position> = {
+export const DIRECTION_DELTAS: Record<Direction, Position> = {
   up: { row: -1, col: 0 },
   down: { row: 1, col: 0 },
   left: { row: 0, col: -1 },
