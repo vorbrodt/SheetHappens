@@ -1,4 +1,4 @@
-import { BOT_MOVE_INTERVAL_MS, BOT_PAINT_INTERVAL_MS, chooseBotDirection } from './bots';
+import { chooseBotDirection } from './bots';
 import { createEntity } from './engine';
 import { getStartingPositions } from './placement';
 import { createRng } from './random';
@@ -58,7 +58,6 @@ describe('bot simulation', () => {
     const botIds = entities.filter((e) => e.id !== 'player').map((e) => e.id);
     let grid = createEmptyGrid();
 
-    const paintsPerMove = BOT_MOVE_INTERVAL_MS / BOT_PAINT_INTERVAL_MS;
     for (let tick = 0; tick < 500; tick++) {
       for (const botId of botIds) {
         const direction = chooseBotDirection(entities, botId, random);
@@ -67,9 +66,8 @@ describe('bot simulation', () => {
           entities = move(entities, botId, direction);
         }
       }
-      for (let i = 0; i < paintsPerMove; i++) {
-        for (const botId of botIds) grid = paint(grid, entities, botId);
-      }
+      // Entering a cell paints it, as does standing on it.
+      for (const botId of botIds) grid = paint(grid, entities, botId);
 
       const keys = entities.map((e) => `${e.position.row},${e.position.col}`);
       expect(new Set(keys).size).toBe(entities.length);

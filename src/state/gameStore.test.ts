@@ -1,4 +1,4 @@
-import { COUNTDOWN_MS } from '../game/engine';
+import { COUNTDOWN_MS, PAINT_DWELL_MS } from '../game/engine';
 import { useGameStore } from './gameStore';
 
 const store = () => useGameStore.getState();
@@ -147,13 +147,12 @@ describe('frozen input', () => {
     ['counting down', () => store().initMatch()],
     ['paused', () => store().setPaused('menu', true)],
     ['ended', () => store().step(Number.MAX_SAFE_INTEGER)],
-  ])('ignores moves and paints while %s', (_, freeze) => {
+  ])('ignores moves while %s', (_, freeze) => {
     startMatch();
     freeze();
     const { grid, entities } = match();
     const entityId = store().localPlayerId;
 
-    store().dispatch({ type: 'paint', entityId, taps: 1 });
     for (const direction of ['up', 'down', 'left', 'right'] as const) {
       store().dispatch({ type: 'move', entityId, direction });
     }
@@ -162,11 +161,28 @@ describe('frozen input', () => {
     expect(match().entities).toBe(entities);
   });
 
-  it('accepts moves and paints while playing', () => {
+  it('accepts moves while playing, painting the cell moved onto', () => {
     startMatch();
-    const { grid } = match();
-    store().dispatch({ type: 'paint', entityId: store().localPlayerId, taps: 1 });
-    expect(match().grid).not.toBe(grid);
+    store().dispatch({ type: 'move', entityId: store().localPlayerId, direction: 'right' });
+    expect(localPlayer().position).toEqual({ row: 0, col: 1 });
+    expect(match().grid[0][1]).toEqual({ owner: store().localPlayerId, intensity: 1 });
+  });
+});
+
+describe('dwell painting', () => {
+  it('paints the starting cell as play starts, then every PAINT_DWELL_MS, but not while paused', () => {
+    startMatch();
+    const cell = () => match().grid[0][0];
+    expect(cell()).toEqual({ owner: store().localPlayerId, intensity: 1 });
+
+    store().step(PAINT_DWELL_MS / 2);
+    store().setPaused('menu', true);
+    store().step(PAINT_DWELL_MS * 4);
+    expect(cell().intensity).toBe(1);
+
+    store().setPaused('menu', false);
+    store().step(PAINT_DWELL_MS / 2);
+    expect(cell().intensity).toBe(2);
   });
 });
 

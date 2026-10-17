@@ -4,8 +4,6 @@ import { Direction, Entity, PlayerId } from './types';
 
 // A bot's default moveIntervalMs.
 export const BOT_MOVE_INTERVAL_MS = 600;
-// Faster than moving, so a bot paints its cell a few times before wandering off.
-export const BOT_PAINT_INTERVAL_MS = 200;
 
 /**
  * Picks a random direction for the bot. An illegal pick (off-board or occupied) is re-rolled
