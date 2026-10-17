@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import Animated, { FadeIn, FadeInDown, ZoomIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { toMatchParams } from '../components/menu/matchConfig';
@@ -17,6 +18,12 @@ function headline(winners: Standing[], localPlayerId: PlayerId): string {
 }
 
 const ACTIONS_MARGIN = 24;
+// Button taps are ignored this long after the screen appears, so taps still spamming in from the
+// match can't fire them.
+const BUTTON_GUARD_MS = 500;
+// Scoreboard rows slide in one after another, starting once the headline has popped.
+const ROWS_DELAY_MS = 250;
+const ROW_STAGGER_MS = 110;
 
 export default function ResultsScreen() {
   const grid = useGameStore((s) => s.match.grid);
@@ -32,31 +39,56 @@ export default function ResultsScreen() {
   const winners = standings.filter((s) => s.rank === 1);
   const colors = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e.color])), [entities]);
 
+  const armed = useRef(false);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      armed.current = true;
+    }, BUTTON_GUARD_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  const guarded = (action: () => void) => () => {
+    if (armed.current) action();
+  };
+
   const playAgain = () => router.replace({ pathname: '/game', params: toMatchParams(config) });
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title} accessibilityRole="header">
+        <Animated.Text
+          style={styles.title}
+          accessibilityRole="header"
+          entering={ZoomIn.springify().damping(10)}
+        >
           {headline(winners, localPlayerId)}
-        </Text>
+        </Animated.Text>
         {winners.length > 1 && (
-          <Text style={styles.subtitle}>
+          <Animated.Text style={styles.subtitle} entering={FadeIn.delay(ROWS_DELAY_MS)}>
             Joint winners: {winners.map((w) => entityName(w.id, localPlayerId)).join(', ')}
-          </Text>
+          </Animated.Text>
         )}
         <View style={styles.list}>
-          <ResultHeader />
-          {standings.map((s) => (
-            <ResultRow
+          <Animated.View entering={FadeIn.delay(ROWS_DELAY_MS)}>
+            <ResultHeader />
+          </Animated.View>
+          {standings.map((s, i) => (
+            <Animated.View
               key={s.id}
-              rank={s.rank}
-              name={entityName(s.id, localPlayerId)}
-              color={colors[s.id]}
-              score={s.score}
-              cellsOwned={s.cellsOwned}
-              winner={s.rank === 1}
-            />
+              // Winners pop in; everyone else drops into place below them.
+              entering={(s.rank === 1 ? ZoomIn : FadeInDown)
+                .delay(ROWS_DELAY_MS + i * ROW_STAGGER_MS)
+                .springify()
+                .damping(12)}
+            >
+              <ResultRow
+                rank={s.rank}
+                name={entityName(s.id, localPlayerId)}
+                color={colors[s.id]}
+                score={s.score}
+                cellsOwned={s.cellsOwned}
+                winner={s.rank === 1}
+              />
+            </Animated.View>
           ))}
         </View>
       </ScrollView>
@@ -71,10 +103,13 @@ export default function ResultsScreen() {
           },
         ]}
       >
-        <Pressable style={styles.button} onPress={playAgain}>
+        <Pressable style={styles.button} onPress={guarded(playAgain)}>
           <Text style={styles.buttonText}>Play Again</Text>
         </Pressable>
-        <Pressable style={styles.secondaryButton} onPress={() => router.dismissTo('/')}>
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={guarded(() => router.dismissTo('/'))}
+        >
           <Text style={styles.secondaryButtonText}>Back to Menu</Text>
         </Pressable>
       </View>
