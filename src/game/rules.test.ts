@@ -4,6 +4,7 @@ import {
   BOARD_SIZE,
   cellsOwned,
   createEmptyGrid,
+  MAX_INTENSITY,
   move,
   paint,
   rankEntities,
@@ -76,13 +77,34 @@ describe('paint', () => {
     expect(result[1][1]).toEqual({ owner: 'a', intensity: 1 });
   });
 
-  it('increments intensity on an already-owned cell, capping at 100', () => {
+  it('increments intensity on an already-owned cell, capping at MAX_INTENSITY', () => {
     const entities = makeEntities([{ id: 'a', position: { row: 1, col: 1 } }]);
-    const grid = gridWithCell(1, 1, { owner: 'a', intensity: 100 });
+    const grid = gridWithCell(1, 1, { owner: 'a', intensity: MAX_INTENSITY - 1 });
 
-    const result = paint(grid, entities, 'a');
+    const afterFirstPaint = paint(grid, entities, 'a');
+    expect(afterFirstPaint[1][1]).toEqual({ owner: 'a', intensity: MAX_INTENSITY });
 
-    expect(result[1][1]).toEqual({ owner: 'a', intensity: 100 });
+    const afterSecondPaint = paint(afterFirstPaint, entities, 'a');
+    expect(afterSecondPaint[1][1]).toEqual({ owner: 'a', intensity: MAX_INTENSITY });
+  });
+
+  it('caps a multi-tap paint at MAX_INTENSITY', () => {
+    const entities = makeEntities([{ id: 'a', position: { row: 1, col: 1 } }]);
+
+    const result = paint(createEmptyGrid(), entities, 'a', MAX_INTENSITY + 3);
+
+    expect(result[1][1]).toEqual({ owner: 'a', intensity: MAX_INTENSITY });
+  });
+
+  it('overpaints a saturated rival cell down to neutral and then takes it', () => {
+    const entities = makeEntities([{ id: 'a', position: { row: 1, col: 1 } }]);
+    let grid = gridWithCell(1, 1, { owner: 'b', intensity: MAX_INTENSITY });
+
+    for (let i = 0; i < MAX_INTENSITY; i++) grid = paint(grid, entities, 'a');
+    expect(grid[1][1]).toEqual({ owner: null, intensity: 0 });
+
+    grid = paint(grid, entities, 'a');
+    expect(grid[1][1]).toEqual({ owner: 'a', intensity: 1 });
   });
 
   it('decrements intensity on an enemy cell without changing ownership', () => {
@@ -107,10 +129,11 @@ describe('paint', () => {
 
   it.each([
     [{ owner: null, intensity: 0 }, 3],
-    [{ owner: 'a', intensity: 98 }, 5],
+    [{ owner: 'a', intensity: 3 }, 5],
     [{ owner: 'b', intensity: 5 }, 2],
     [{ owner: 'b', intensity: 3 }, 3],
     [{ owner: 'b', intensity: 2 }, 6],
+    [{ owner: 'b', intensity: 1 }, 9],
   ])('paints %o by %i the same as that many single paints', (cell, amount) => {
     const entities = makeEntities([{ id: 'a', position: { row: 1, col: 1 } }]);
     const grid = gridWithCell(1, 1, cell);

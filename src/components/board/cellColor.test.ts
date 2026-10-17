@@ -1,3 +1,4 @@
+import { MAX_INTENSITY } from '../../game/rules';
 import { getCellColor } from './cellColor';
 
 const PINK = '#EC4899';
@@ -9,20 +10,21 @@ describe('getCellColor', () => {
   });
 
   it('uses the owner color at full opacity for max intensity', () => {
-    expect(getCellColor(PINK, 100)).toBe('rgba(236, 72, 153, 1)');
+    expect(getCellColor(PINK, MAX_INTENSITY)).toBe('rgba(236, 72, 153, 1)');
   });
 
-  it('gets more opaque as intensity increases', () => {
+  it('steps up opacity visibly at every intensity level', () => {
     const alphaAt = (intensity: number) =>
       Number(getCellColor(PINK, intensity).match(/, ([\d.]+)\)$/)?.[1]);
 
     expect(alphaAt(1)).toBeGreaterThan(0.15);
-    expect(alphaAt(2)).toBeGreaterThan(alphaAt(1));
-    expect(alphaAt(100)).toBeGreaterThan(alphaAt(99));
+    for (let i = 1; i <= MAX_INTENSITY; i++) {
+      expect(alphaAt(i) - alphaAt(i - 1)).toBeGreaterThanOrEqual(0.15);
+    }
   });
 
-  it('clamps intensity to the 0-100 range', () => {
-    expect(getCellColor(PINK, 150)).toBe(getCellColor(PINK, 100));
+  it('clamps intensity to the 0-MAX_INTENSITY range', () => {
+    expect(getCellColor(PINK, MAX_INTENSITY + 1)).toBe(getCellColor(PINK, MAX_INTENSITY));
     expect(getCellColor(PINK, -5)).toBe(getCellColor(PINK, 0));
   });
 });

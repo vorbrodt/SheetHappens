@@ -1,7 +1,7 @@
 import { BOT_MOVE_INTERVAL_MS, BOT_PAINT_INTERVAL_MS } from './bots';
 import { applyInput, COUNTDOWN_MS, createMatch, PLAYER_MOVE_INTERVAL_MS, setPaused, step } from './engine';
 import { createRng, Rng } from './random';
-import { BOARD_SIZE, rankEntities } from './rules';
+import { BOARD_SIZE, MAX_INTENSITY, rankEntities } from './rules';
 import { Direction, Entity, MatchEvent, MatchState, PlayerId } from './types';
 
 const PLAYER = 'player';
@@ -158,8 +158,11 @@ describe('per-entity effects', () => {
       state = applyInput(state, paintInput(), 0);
       expect(state.grid[0][0].intensity).toBe(2);
 
-      state = applyInput(state, paintInput(3), 0);
-      expect(state.grid[0][0].intensity).toBe(8);
+      state = applyInput(state, paintInput(1), 0);
+      expect(state.grid[0][0].intensity).toBe(4);
+
+      state = applyInput(state, paintInput(1), 0);
+      expect(state.grid[0][0].intensity).toBe(MAX_INTENSITY);
     });
   });
 

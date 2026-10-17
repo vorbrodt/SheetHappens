@@ -1,3 +1,5 @@
+import { MAX_INTENSITY } from '../../game/rules';
+
 const NEUTRAL_CELL_COLOR = '#F1F2F4';
 
 // Even at intensity 0, an owned cell should show a faint tint rather than disappear.
@@ -17,8 +19,8 @@ export function getCellColor(ownerColor: string | null | undefined, intensity: n
   }
 
   const { r, g, b } = hexToRgb(ownerColor);
-  const clampedIntensity = Math.min(100, Math.max(0, intensity));
-  const alpha = MIN_INTENSITY_ALPHA + (clampedIntensity / 100) * (1 - MIN_INTENSITY_ALPHA);
+  const clampedIntensity = Math.min(MAX_INTENSITY, Math.max(0, intensity));
+  const alpha = MIN_INTENSITY_ALPHA + (clampedIntensity / MAX_INTENSITY) * (1 - MIN_INTENSITY_ALPHA);
 
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
