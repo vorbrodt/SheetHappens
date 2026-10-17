@@ -96,8 +96,13 @@ export function paint(grid: Grid, entities: Entity[], entityId: PlayerId, amount
   );
 }
 
+// Points each owned cell adds on top of its intensity, so territory counts as well as depth.
+export const POINTS_PER_CELL = 2;
+
 export function score(grid: Grid, entityId: PlayerId): number {
-  return grid.flat().reduce((sum, cell) => (cell.owner === entityId ? sum + cell.intensity : sum), 0);
+  return grid
+    .flat()
+    .reduce((sum, cell) => (cell.owner === entityId ? sum + cell.intensity + POINTS_PER_CELL : sum), 0);
 }
 
 export function cellsOwned(grid: Grid, entityId: PlayerId): number {

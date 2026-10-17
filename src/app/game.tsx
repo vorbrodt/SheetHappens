@@ -14,6 +14,7 @@ import { MatchHud } from '../components/hud/MatchHud';
 import { PauseDialog } from '../components/hud/PauseDialog';
 import { JellyHandle } from '../components/jelly/types';
 import { CountdownOverlay } from '../components/match/CountdownOverlay';
+import { GameOverOverlay } from '../components/match/GameOverOverlay';
 import { useGameLoop } from '../components/match/useGameLoop';
 import { useMatchAnimations } from '../components/match/useMatchAnimations';
 import { MatchParams, parseMatchParams } from '../components/menu/matchConfig';
@@ -33,6 +34,7 @@ export default function GameScreen() {
   const [jellyRefs] = useState(() => new Map<PlayerId, RefObject<JellyHandle | null>>());
   const [boardSpace, setBoardSpace] = useState<BoardSpace | null>(null);
   const [pauseOpen, setPauseOpen] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -40,16 +42,19 @@ export default function GameScreen() {
   }, [duration, bots]);
 
   // Reacts to the moment the match ends rather than to the status itself, so a stale "ended"
-  // left in the store by the previous match never skips this one.
+  // left in the store by the previous match never skips this one. The game-over overlay plays
+  // first and moves on to the results itself.
   useEffect(
     () =>
       useGameStore.subscribe((state, prev) => {
         if (state.match.status === 'ended' && prev.match.status !== 'ended') {
-          router.replace('/results');
+          setGameOver(true);
         }
       }),
     []
   );
+
+  const showResults = useCallback(() => router.replace('/results'), []);
 
   const jellyRefFor = (id: PlayerId) => {
     let ref = jellyRefs.get(id);
@@ -81,15 +86,17 @@ export default function GameScreen() {
     router.dismissTo('/');
   }, []);
 
-  // Android back goes through the same pause dialog, and closes it again when it is open.
+  // Android back goes through the same pause dialog, and closes it again when it is open. Once the
+  // match is over it does nothing, so the game-over overlay plays out.
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (gameOver) return true;
       if (pauseOpen) resume();
       else openPause();
       return true;
     });
     return () => subscription.remove();
-  }, [pauseOpen, openPause, resume]);
+  }, [gameOver, pauseOpen, openPause, resume]);
 
   const handleBoardAreaLayout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
@@ -167,6 +174,7 @@ export default function GameScreen() {
       </View>
       <CountdownOverlay />
       {pauseOpen && <PauseDialog onResume={resume} onLeave={leave} />}
+      {gameOver && <GameOverOverlay onDone={showResults} />}
     </View>
   );
 }
