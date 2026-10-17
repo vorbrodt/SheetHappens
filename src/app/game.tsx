@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Board } from '../components/board/Board';
 import { BoardEntityLayer, BoardEntityViewModel } from '../components/board/BoardEntityLayer';
+import { PaintSplashLayer } from '../components/board/PaintSplashLayer';
 import { BoardSpace, BoardSpaceProvider } from '../components/board/useBoardLayout';
 import { useSwipeMovement } from '../components/gestures/useSwipeMovement';
 import { IntensityReadout } from '../components/hud/IntensityReadout';
@@ -172,6 +173,7 @@ export default function GameScreen() {
                 <BoardSpaceProvider value={boardSpace}>
                   <View style={styles.boardWrapper}>
                     <Board cells={grid} ownerColors={ownerColors} />
+                    <PaintSplashLayer />
                     <BoardEntityLayer entities={boardEntities} />
                   </View>
                 </BoardSpaceProvider>
