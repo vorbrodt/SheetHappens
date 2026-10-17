@@ -6,37 +6,37 @@ exports[`full simulated match plays out deterministically for a fixed seed 1`] =
     "cellsOwned": 16,
     "id": "player",
     "rank": 1,
-    "score": 73,
+    "score": 105,
   },
   {
     "cellsOwned": 10,
     "id": "bot-3",
     "rank": 2,
-    "score": 35,
+    "score": 55,
   },
   {
     "cellsOwned": 10,
     "id": "bot-5",
     "rank": 3,
-    "score": 33,
+    "score": 53,
   },
   {
     "cellsOwned": 9,
     "id": "bot-1",
     "rank": 4,
-    "score": 26,
-  },
-  {
-    "cellsOwned": 8,
-    "id": "bot-4",
-    "rank": 5,
-    "score": 24,
+    "score": 44,
   },
   {
     "cellsOwned": 10,
     "id": "bot-2",
+    "rank": 5,
+    "score": 43,
+  },
+  {
+    "cellsOwned": 8,
+    "id": "bot-4",
     "rank": 6,
-    "score": 23,
+    "score": 40,
   },
 ]
 `;
