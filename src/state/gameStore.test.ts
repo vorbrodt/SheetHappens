@@ -36,12 +36,12 @@ describe('pre-match countdown', () => {
 
   it('holds the countdown while paused and resumes it, not play', () => {
     store().step(1_000);
-    store().setPaused(true);
+    store().setPaused('menu', true);
     expect(match().status).toBe('paused');
     store().step(5_000);
     expect(match().countdownMs).toBe(COUNTDOWN_MS - 1_000);
 
-    store().setPaused(false);
+    store().setPaused('menu', false);
     expect(match().status).toBe('countdown');
     store().step(COUNTDOWN_MS);
     expect(match().status).toBe('playing');
@@ -79,11 +79,11 @@ describe('match clock', () => {
   it('holds the clock while paused and resumes where it left off', () => {
     startMatch(10);
     store().step(2_000);
-    store().setPaused(true);
+    store().setPaused('menu', true);
     store().step(5_000);
     expect(match().remainingMs).toBe(8_000);
 
-    store().setPaused(false);
+    store().setPaused('menu', false);
     store().step(1_000);
     expect(match().remainingMs).toBe(7_000);
   });
@@ -91,15 +91,61 @@ describe('match clock', () => {
   it('does not resume a match that has ended', () => {
     startMatch(1);
     store().step(1_000);
-    store().setPaused(false);
+    store().setPaused('menu', false);
     expect(match().status).toBe('ended');
+  });
+});
+
+describe('pause reasons', () => {
+  it('stays paused on return to the foreground while the pause menu is open', () => {
+    startMatch(10);
+    store().setPaused('menu', true);
+    store().setPaused('background', true);
+    store().setPaused('background', false);
+    expect(match().status).toBe('paused');
+
+    store().setPaused('menu', false);
+    expect(match().status).toBe('playing');
+    store().step(1_000);
+    expect(match().remainingMs).toBe(9_000);
+  });
+
+  it('stays paused when the menu closes while the app is in the background', () => {
+    startMatch(10);
+    store().setPaused('menu', true);
+    store().setPaused('background', true);
+    store().setPaused('menu', false);
+    expect(match().status).toBe('paused');
+
+    store().setPaused('background', false);
+    expect(match().status).toBe('playing');
+  });
+
+  it('resumes the countdown after a menu pause across a trip to the background', () => {
+    store().initMatch({ durationSeconds: 10, botCount: 0 });
+    store().step(1_000);
+    store().setPaused('menu', true);
+    store().setPaused('background', true);
+    store().setPaused('background', false);
+    store().setPaused('menu', false);
+    expect(match().status).toBe('countdown');
+    expect(match().countdownMs).toBe(COUNTDOWN_MS - 1_000);
+  });
+
+  it('forgets reasons left over from the previous match', () => {
+    startMatch();
+    store().setPaused('menu', true);
+    store().initMatch();
+    store().setPaused('background', true);
+    store().setPaused('background', false);
+    expect(match().status).toBe('countdown');
   });
 });
 
 describe('frozen input', () => {
   it.each([
     ['counting down', () => store().initMatch()],
-    ['paused', () => store().setPaused(true)],
+    ['paused', () => store().setPaused('menu', true)],
     ['ended', () => store().step(Number.MAX_SAFE_INTEGER)],
   ])('ignores moves and paints while %s', (_, freeze) => {
     startMatch();

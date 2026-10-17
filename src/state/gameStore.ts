@@ -6,6 +6,11 @@ import { Direction, MatchConfig, MatchInput, MatchState, PlayerId } from '../gam
 // The id the player on this device plays under in single-player matches.
 const LOCAL_PLAYER_ID: PlayerId = 'player';
 
+// Why the match is held: the player opened the pause menu, or the app left the foreground.
+export type PauseReason = 'menu' | 'background';
+
+const NOT_PAUSED: Record<PauseReason, boolean> = { menu: false, background: false };
+
 interface GameStore {
   match: MatchState;
   config: MatchConfig;
@@ -13,6 +18,9 @@ interface GameStore {
   localPlayerId: PlayerId;
   // The direction the local player is holding a swipe in. Its move repeats every step while held.
   heldDirection: Direction | null;
+  // Every reason currently holding the match. It resumes only once none is left, so coming back to
+  // the foreground never unpauses behind the pause menu.
+  pausedBy: Record<PauseReason, boolean>;
   // Starts a fresh match in the countdown phase.
   initMatch: (config?: Partial<MatchConfig>) => void;
   // Applies an input at the current match time. The engine ignores it unless the match is playing.
@@ -21,7 +29,8 @@ interface GameStore {
   holdDirection: (direction: Direction | null) => void;
   // Advances the match by wall-clock time; called once per frame by the game loop.
   step: (deltaMs: number) => void;
-  setPaused: (paused: boolean) => void;
+  // Sets or clears one reason to hold the match; it resumes when the last one is cleared.
+  setPaused: (reason: PauseReason, paused: boolean) => void;
 }
 
 export const useGameStore = create<GameStore>()((set, get) => {
@@ -34,6 +43,7 @@ export const useGameStore = create<GameStore>()((set, get) => {
     config: DEFAULT_CONFIG,
     localPlayerId: LOCAL_PLAYER_ID,
     heldDirection: null,
+    pausedBy: NOT_PAUSED,
 
     initMatch: (config) => {
       const nextConfig = { ...get().config, ...config };
@@ -42,6 +52,7 @@ export const useGameStore = create<GameStore>()((set, get) => {
         config: nextConfig,
         localPlayerId: LOCAL_PLAYER_ID,
         heldDirection: null,
+        pausedBy: NOT_PAUSED,
       });
     },
 
@@ -74,6 +85,10 @@ export const useGameStore = create<GameStore>()((set, get) => {
       setMatch(next);
     },
 
-    setPaused: (paused) => setMatch(setPaused(get().match, paused)),
+    setPaused: (reason, paused) => {
+      const pausedBy = { ...get().pausedBy, [reason]: paused };
+      set({ pausedBy });
+      setMatch(setPaused(get().match, pausedBy.menu || pausedBy.background));
+    },
   };
 });
