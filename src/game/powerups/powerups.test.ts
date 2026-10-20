@@ -254,7 +254,8 @@ describe('activating', () => {
   const armed = () => updateEntity(step(playingMatch(), 1_000, noRandom), PLAYER, { inventory: ['speedster', 'ghostArmy'] });
 
   it('empties the slot and runs the power-up for its duration', () => {
-    const activate = jest.spyOn(POWER_UPS.ghostArmy, 'activate');
+    // Only the lifecycle is under test here, not the effect.
+    const activate = jest.spyOn(POWER_UPS.ghostArmy, 'activate').mockImplementation((s) => s);
     const state = pressSlot(armed(), 1);
 
     expect(player(state).inventory).toEqual(['speedster', null]);
