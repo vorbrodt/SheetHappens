@@ -48,6 +48,8 @@ export interface Entity {
   expiresAt: number | null;
   // When a dead entity comes back; null while it's alive.
   respawnAt: number | null;
+  // How many entities it has killed this match.
+  kills: number;
 }
 
 export interface Cell {
@@ -69,6 +71,10 @@ export type MatchStatus = 'countdown' | 'playing' | 'paused' | 'ended';
 // When a bot next acts, on the match clock.
 export interface BotTimers {
   nextMoveAt: number;
+  // When it uses a stored power-up; unset while it carries none.
+  usePowerUpAt?: number;
+  // When it next teleports; unset while it can't.
+  teleportAt?: number;
 }
 
 export type MatchInput =

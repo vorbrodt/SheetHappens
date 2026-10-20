@@ -1,9 +1,16 @@
-import { chooseBotDirection } from './bots';
+import {
+  BOT_POWER_UP_DELAY_MIN_MS,
+  BOT_TELEPORT_INTERVAL_MS,
+  chooseBotDirection,
+  chooseTeleportTarget,
+  scheduleBot,
+} from './bots';
 import { createEntity } from './engine';
 import { getStartingPositions } from './placement';
+import { Pickup } from './powerups/types';
 import { createRng } from './random';
 import { BOARD_SIZE, canMove, cellsOwned, createEmptyGrid, move, paint } from './rules';
-import { Entity, Position } from './types';
+import { BotTimers, Entity, Position } from './types';
 
 function makeEntities(entries: { id: string; position: Position }[]): Entity[] {
   return entries.map(({ id, position }) => createEntity({ id, color: '#000000', position }));
@@ -73,6 +80,90 @@ describe('chooseBotDirection', () => {
     const picks = new Set([0, 0.25, 0.5, 0.75].map((r) => chooseBotDirection(entities, 'bot', () => r)));
 
     expect(picks).toEqual(new Set(['up', 'down', 'left', 'right']));
+  });
+});
+
+describe('chooseBotDirection goals', () => {
+  function pickupAt(row: number, col: number): Pickup {
+    return { id: `p-${row}-${col}`, kind: 'speedster', position: { row, col }, spawnedAt: 0, expiresAt: 20_000 };
+  }
+
+  function bot(patch: Partial<Entity> = {}): Entity[] {
+    return makeEntities([{ id: 'bot', position: { row: 3, col: 3 } }]).map((e) => ({ ...e, ...patch }));
+  }
+
+  // In open space a wandering bot drawing 0 goes 'up', the first of the four.
+  it('heads for a nearby pickup some of the time', () => {
+    expect(chooseBotDirection(bot(), 'bot', () => 0, BOARD_SIZE, [pickupAt(3, 5)])).toBe('right');
+    // A draw at or past the bias wanders: 0.6 picks the third of the four.
+    expect(chooseBotDirection(bot(), 'bot', () => 0.6, BOARD_SIZE, [pickupAt(3, 5)])).toBe('left');
+  });
+
+  it('ignores pickups out of range, with full slots, or as a ghost', () => {
+    const near = [pickupAt(3, 5)];
+    expect(chooseBotDirection(bot(), 'bot', () => 0, BOARD_SIZE, [pickupAt(7, 7)])).toBe('up');
+    expect(chooseBotDirection(bot({ inventory: ['speedster', 'jellyport'] }), 'bot', () => 0, BOARD_SIZE, near)).toBe(
+      'up'
+    );
+    expect(chooseBotDirection(bot({ ghost: true }), 'bot', () => 0, BOARD_SIZE, near)).toBe('up');
+  });
+
+  it('hunts the nearest jelly while lethal', () => {
+    const entities = [
+      ...bot({ lethal: true }),
+      ...makeEntities([
+        { id: 'near', position: { row: 6, col: 3 } },
+        { id: 'far', position: { row: 0, col: 0 } },
+      ]),
+    ];
+    expect(chooseBotDirection(entities, 'bot', () => 0)).toBe('down');
+  });
+
+  it('wanders when no move gets it closer', () => {
+    // Its only move leads away from the pickup behind the blocker.
+    const entities = makeEntities([
+      { id: 'bot', position: { row: 0, col: 0 } },
+      { id: 'a', position: { row: 0, col: 1 } },
+    ]);
+    expect(chooseBotDirection(entities, 'bot', () => 0, BOARD_SIZE, [pickupAt(0, 2)])).toBe('down');
+  });
+});
+
+describe('chooseTeleportTarget', () => {
+  const entities = makeEntities([
+    { id: 'bot', position: { row: 0, col: 0 } },
+    { id: 'a', position: { row: 0, col: 1 } },
+  ]);
+
+  it('picks a random free cell other than its own', () => {
+    expect(chooseTeleportTarget(entities, 'bot', () => 0)).toEqual({ row: 0, col: 2 });
+    expect(chooseTeleportTarget(entities, 'bot', () => 0.999)).toEqual({ row: 7, col: 7 });
+  });
+
+  it('returns null when nowhere is free', () => {
+    expect(chooseTeleportTarget(entities, 'bot', () => 0, 1)).toBeNull();
+  });
+});
+
+describe('scheduleBot', () => {
+  const [plain] = makeEntities([{ id: 'bot', position: { row: 0, col: 0 } }]);
+  const timers: BotTimers = { nextMoveAt: 600 };
+
+  it('keeps the same timers when nothing changes', () => {
+    expect(scheduleBot(timers, plain, 1_000, () => 0)).toBe(timers);
+  });
+
+  it('schedules a use for a carried power-up and a teleport while it can teleport, and drops them after', () => {
+    const bot: Entity = { ...plain, inventory: ['speedster', null], canTeleport: true };
+    const scheduled = scheduleBot(timers, bot, 1_000, () => 0);
+
+    expect(scheduled).toEqual({
+      nextMoveAt: 600,
+      usePowerUpAt: 1_000 + BOT_POWER_UP_DELAY_MIN_MS,
+      teleportAt: 1_000 + BOT_TELEPORT_INTERVAL_MS,
+    });
+    expect(scheduleBot(scheduled, bot, 1_500, () => 0)).toBe(scheduled);
+    expect(scheduleBot(scheduled, plain, 1_500, () => 0)).toEqual(timers);
   });
 });
 

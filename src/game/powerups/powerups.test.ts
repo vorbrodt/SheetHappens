@@ -237,16 +237,21 @@ describe('picking up', () => {
     expect(player(state).inventory).toEqual(['jellyport', null]);
   });
 
-  it('lets bots and ghosts walk over pickups without taking them', () => {
+  it('lets bots take pickups too', () => {
     const start = playingMatch({ pickups: [pickup('speedster', 0, 1)] });
-    const asBot = swipe({ ...start, bots: { [PLAYER]: { nextMoveAt: Infinity } } }, 'right');
-    const asGhost = swipe(updateEntity(start, PLAYER, { ghost: true }), 'right');
+    const state = swipe({ ...start, bots: { [PLAYER]: { nextMoveAt: Infinity } } }, 'right');
 
-    for (const state of [asBot, asGhost]) {
-      expect(player(state).position).toEqual({ row: 0, col: 1 });
-      expect(player(state).inventory).toEqual([null, null]);
-      expect(state.pickups).toHaveLength(1);
-    }
+    expect(player(state).inventory).toEqual(['speedster', null]);
+    expect(state.pickups).toHaveLength(0);
+  });
+
+  it('lets ghosts walk over pickups without taking them', () => {
+    const start = playingMatch({ pickups: [pickup('speedster', 0, 1)] });
+    const state = swipe(updateEntity(start, PLAYER, { ghost: true }), 'right');
+
+    expect(player(state).position).toEqual({ row: 0, col: 1 });
+    expect(player(state).inventory).toEqual([null, null]);
+    expect(state.pickups).toHaveLength(1);
   });
 });
 

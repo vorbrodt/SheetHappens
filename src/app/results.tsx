@@ -32,12 +32,15 @@ export default function ResultsScreen() {
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const insets = useSafeAreaInsets();
 
+  // Summoned ghosts still on the board when time ran up paint for their owner, so they don't rank.
+  const players = useMemo(() => entities.filter((e) => e.summonedBy === null), [entities]);
   const standings = useMemo(
-    () => rankEntities(grid, entities.map((e) => e.id)),
-    [grid, entities]
+    () => rankEntities(grid, players.map((e) => e.id)),
+    [grid, players]
   );
   const winners = standings.filter((s) => s.rank === 1);
-  const colors = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e.color])), [entities]);
+  const colors = useMemo(() => Object.fromEntries(players.map((e) => [e.id, e.color])), [players]);
+  const kills = useMemo(() => Object.fromEntries(players.map((e) => [e.id, e.kills])), [players]);
 
   const armed = useRef(false);
   useEffect(() => {
@@ -86,6 +89,7 @@ export default function ResultsScreen() {
                 color={colors[s.id]}
                 score={s.score}
                 cellsOwned={s.cellsOwned}
+                kills={kills[s.id]}
                 winner={s.rank === 1}
               />
             </Animated.View>

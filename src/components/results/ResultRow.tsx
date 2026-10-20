@@ -8,15 +8,18 @@ interface ResultRowProps {
   color: string;
   score: number;
   cellsOwned: number;
+  // How many it killed this match; shown under the name once there is at least one.
+  kills: number;
   winner: boolean;
 }
 
-export function ResultRow({ rank, name, color, score, cellsOwned, winner }: ResultRowProps) {
+export function ResultRow({ rank, name, color, score, cellsOwned, kills, winner }: ResultRowProps) {
+  const killsLabel = `${kills} ${kills === 1 ? 'kill' : 'kills'}`;
   return (
     <View
       style={[styles.row, winner && [styles.winnerRow, { borderColor: color }]]}
       accessible
-      accessibilityLabel={`${winner ? 'Winner, ' : ''}rank ${rank}, ${name}, score ${score}, ${cellsOwned} cells`}
+      accessibilityLabel={`${winner ? 'Winner, ' : ''}rank ${rank}, ${name}, score ${score}, ${cellsOwned} cells${kills > 0 ? `, ${killsLabel}` : ''}`}
     >
       <Text style={[styles.rank, winner && styles.winnerText]}>{rank}</Text>
       <View style={[styles.swatch, { backgroundColor: color }]} />
@@ -25,6 +28,7 @@ export function ResultRow({ rank, name, color, score, cellsOwned, winner }: Resu
           {name}
         </Text>
         {winner && <Text style={[styles.badge, { color }]}>Winner</Text>}
+        {kills > 0 && <Text style={styles.kills}>{killsLabel}</Text>}
       </View>
       <Text style={[styles.value, winner && styles.winnerText]}>{score}</Text>
       <Text style={[styles.value, styles.cells]}>{cellsOwned}</Text>
@@ -107,6 +111,11 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   cells: {
+    color: LABEL_COLOR,
+  },
+  kills: {
+    fontSize: 12,
+    fontWeight: '600',
     color: LABEL_COLOR,
   },
   winnerText: {

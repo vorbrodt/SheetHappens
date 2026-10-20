@@ -1,4 +1,10 @@
-import { BOT_MOVE_INTERVAL_MS, chooseBotDirection } from './bots';
+import {
+  BOT_MOVE_INTERVAL_MS,
+  BOT_TELEPORT_INTERVAL_MS,
+  chooseBotDirection,
+  chooseTeleportTarget,
+  scheduleBot,
+} from './bots';
 import { findPlacement, getCorners, getStartingPositions } from './placement';
 import { activatePowerUp, expirePowerUp } from './powerups/lifecycle';
 import { collectPickups, despawnPickup, INVENTORY_SLOTS, spawnDelay, spawnWave } from './powerups/pickups';
@@ -62,8 +68,8 @@ type NewEntity = Pick<Entity, 'id' | 'color' | 'position'> & Partial<Entity>;
 export type HeldDirections = Readonly<Record<PlayerId, Direction>>;
 
 // An entity with no effects active: player move speed, single paint, not frozen, one cell big,
-// empty power-up slots, painting as itself and alive for good. Its dwell paint is due at match
-// time 0, so its starting cell counts as entered the moment play starts.
+// empty power-up slots, painting as itself, alive for good and with no kills yet. Its dwell paint is
+// due at match time 0, so its starting cell counts as entered the moment play starts.
 export function createEntity(entity: NewEntity): Entity {
   return {
     moveIntervalMs: PLAYER_MOVE_INTERVAL_MS,
@@ -83,6 +89,7 @@ export function createEntity(entity: NewEntity): Entity {
     summonedBy: null,
     expiresAt: null,
     respawnAt: null,
+    kills: 0,
     ...entity,
   };
 }
@@ -132,11 +139,13 @@ function enter(state: MatchState, entityId: PlayerId, cells: Position[], now: nu
   return { ...collected, events: [{ type: 'painted', entityId }, ...collected.events] };
 }
 
-// Takes the entity off the board until RESPAWN_MS from now. Its paint stays. The returned events
-// are its own.
+// Takes the entity off the board until RESPAWN_MS from now and counts the kill for `by`. Its paint
+// stays. The returned events are its own.
 function kill(state: MatchState, entityId: PlayerId, by: PlayerId, now: number): MatchState {
+  const dead = updateEntity(state, entityId, { respawnAt: now + RESPAWN_MS });
+  const killer = dead.entities.find((e) => e.id === by);
   return {
-    ...updateEntity(state, entityId, { respawnAt: now + RESPAWN_MS }),
+    ...(killer ? updateEntity(dead, by, { kills: killer.kills + 1 }) : dead),
     events: [{ type: 'killed', entityId, by }],
   };
 }
@@ -276,9 +285,10 @@ export function summon(
 /**
  * Runs everything that came due by the match clock, in time order: power-ups running out, summoned
  * entities leaving, dead entities respawning, pickups despawning, waves of pickups spawning, every
- * living entity's dwell paints, every living bot's moves (a random legal direction every
- * moveIntervalMs; a boxed-in bot waits for its next turn) and the moves of every held direction,
- * from `from` at the earliest. Each action is
+ * living entity's dwell paints, the bots' power-up uses and teleports (see scheduleBot; a use that
+ * is refused, or comes while one is running, is tried again later), every living bot's moves (see
+ * chooseBotDirection, every moveIntervalMs; a boxed-in bot waits for its next turn) and the moves
+ * of every held direction, from `from` at the earliest. Each action is
  * stamped with the time it was due rather than the end of the step, so entities keep their exact
  * pace whatever the step size. A paint due at the same time as a move goes first, since the entity
  * did stand there the full PAINT_DWELL_MS, and anything ending or spawning at that time goes
@@ -314,6 +324,27 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
     return true;
   };
 
+  // Uses the first of the bot's power-ups that isn't refused, if it has nothing running.
+  const botUsePowerUp = (bot: Entity, at: number) => {
+    if (bot.activePowerUp) return;
+    for (const slot of [0, 1] as const) {
+      const after = applyInput(next, { type: 'usePowerUp', entityId: bot.id, slot }, at, rng);
+      if (after !== next && !after.events.some((e) => e.type === 'powerUpRefused')) {
+        apply(after);
+        return;
+      }
+    }
+  };
+
+  // Keeps every bot's power-up and teleport timers up to date with what it now carries and can do.
+  const scheduleBots = (now: number) => {
+    for (const entity of next.entities) {
+      const timers = bots[entity.id];
+      if (timers) bots[entity.id] = scheduleBot(timers, entity, now, rng);
+    }
+  };
+
+  scheduleBots(from);
   for (;;) {
     let dueAt = Infinity;
     let act: (() => void) | null = null;
@@ -360,6 +391,29 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
       }
     }
     for (const entity of next.entities) {
+      const at = bots[entity.id]?.usePowerUpAt;
+      if (at !== undefined && at < dueAt) {
+        dueAt = at;
+        act = () => {
+          botUsePowerUp(entity, at);
+          bots[entity.id] = { ...bots[entity.id], usePowerUpAt: undefined };
+        };
+      }
+    }
+    for (const entity of next.entities) {
+      const at = bots[entity.id]?.teleportAt;
+      if (at !== undefined && at < dueAt) {
+        dueAt = at;
+        act = () => {
+          const target =
+            entity.respawnAt === null ? chooseTeleportTarget(next.entities, entity.id, rng, next.grid.length) : null;
+          const after = target ? applyInput(next, { type: 'teleport', entityId: entity.id, target }, at, rng) : next;
+          if (after !== next) apply(after);
+          bots[entity.id] = { ...bots[entity.id], teleportAt: at + BOT_TELEPORT_INTERVAL_MS };
+        };
+      }
+    }
+    for (const entity of next.entities) {
       const timers = bots[entity.id];
       const direction = held[entity.id];
       if (timers && timers.nextMoveAt < dueAt) {
@@ -367,9 +421,10 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
         dueAt = at;
         act = () => {
           const alive = entity.respawnAt === null;
-          tryMove(entity.id, alive ? chooseBotDirection(next.entities, entity.id, rng, next.grid.length) : null, at);
+          const pick = alive ? chooseBotDirection(next.entities, entity.id, rng, next.grid.length, next.pickups) : null;
+          tryMove(entity.id, pick, at);
           // At least 1ms, so a zero interval can't spin forever.
-          bots[entity.id] = { nextMoveAt: at + Math.max(1, entity.moveIntervalMs) };
+          bots[entity.id] = { ...bots[entity.id], nextMoveAt: at + Math.max(1, entity.moveIntervalMs) };
         };
       } else if (!timers && direction && !stalled.has(entity.id)) {
         const at = Math.max(moveReadyAt(entity), from);
@@ -384,6 +439,7 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
 
     if (!act || dueAt > next.elapsedMs) break;
     act();
+    scheduleBots(dueAt);
   }
 
   return { ...next, bots, events: events.length > 0 ? events : NO_EVENTS };

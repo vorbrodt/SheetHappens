@@ -79,9 +79,9 @@ export function despawnPickup(state: MatchState, pickupId: string): MatchState {
   };
 }
 
-// Whether walking onto a pickup takes it. Bots don't collect yet (Phase 10A).
-function collects(state: MatchState, entity: Entity): boolean {
-  return !entity.ghost && entity.respawnAt === null && !(entity.id in state.bots);
+// Whether walking onto a pickup takes it: for every living entity but ghosts, bots included.
+function collects(entity: Entity): boolean {
+  return !entity.ghost && entity.respawnAt === null;
 }
 
 /**
@@ -91,7 +91,7 @@ function collects(state: MatchState, entity: Entity): boolean {
  */
 export function collectPickups(state: MatchState, entityId: PlayerId, passed: Position[] = []): MatchState {
   const entity = state.entities.find((e) => e.id === entityId);
-  if (!entity || !collects(state, entity)) return { ...state, events: [] };
+  if (!entity || !collects(entity)) return { ...state, events: [] };
 
   const cells = [...passed, ...entityCells(entity)];
   const inventory = [...entity.inventory];
