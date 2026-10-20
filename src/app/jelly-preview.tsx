@@ -1,9 +1,10 @@
 import { useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { Jelly } from '../components/jelly/Jelly';
 import { Direction, JellyHandle, JellyRenderer } from '../components/jelly/types';
+import { POWER_UP_ICON_KINDS, PowerUpIcon } from '../components/powerups/PowerUpIcon';
 
 const PREVIEW_COLORS = ['#EC4899', '#2563EB', '#DC2626', '#16A34A'];
 const JELLY_SIZE = 72;
@@ -11,6 +12,8 @@ const RENDERERS: { renderer: JellyRenderer; label: string }[] = [
   { renderer: 'procedural', label: 'Procedural (Reanimated)' },
   { renderer: 'lottie', label: 'Lottie idle (KAN-16 prototype)' },
 ];
+// Board pickup and inventory slot sizes.
+const POWER_UP_ICON_SIZES = [28, 56];
 
 export default function JellyPreviewScreen() {
   const jellyRefs = useRef<(JellyHandle | null)[]>([]);
@@ -24,7 +27,7 @@ export default function JellyPreviewScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView contentContainerStyle={styles.container}>
       {RENDERERS.map(({ renderer, label }, rowIndex) => (
         <View key={renderer} style={styles.rendererRow}>
           <Text style={styles.rendererLabel}>{label}</Text>
@@ -44,6 +47,19 @@ export default function JellyPreviewScreen() {
         </View>
       ))}
 
+      <View style={styles.rendererRow}>
+        <Text style={styles.rendererLabel}>Power-up icons (KAN-33)</Text>
+        {POWER_UP_ICON_SIZES.map((size) => (
+          <View key={size} style={styles.iconRow}>
+            {POWER_UP_ICON_KINDS.map((kind) => (
+              <View key={kind} style={[styles.iconCell, { width: size + 12, height: size + 12 }]}>
+                <PowerUpIcon kind={kind} size={size} />
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
+
       <View style={styles.dPad}>
         <PreviewButton label="▲" onPress={() => triggerMove('up')} />
         <View style={styles.dPadMiddleRow}>
@@ -60,7 +76,7 @@ export default function JellyPreviewScreen() {
       <Pressable style={styles.button} onPress={() => router.back()}>
         <Text style={styles.buttonText}>Back to Menu</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -74,11 +90,12 @@ function PreviewButton({ label, onPress }: { label: string; onPress: () => void 
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#fff',
     gap: 24,
+    paddingVertical: 24,
   },
   rendererRow: {
     alignItems: 'center',
@@ -92,6 +109,20 @@ const styles = StyleSheet.create({
   jellyRow: {
     flexDirection: 'row',
     gap: 16,
+  },
+  iconRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+  },
+  // A neutral cell-like tile so the icons are judged against a board background.
+  iconCell: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
   },
   dPad: {
     alignItems: 'center',
