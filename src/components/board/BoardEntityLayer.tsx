@@ -5,7 +5,7 @@ import { SharedValue, useDerivedValue } from 'react-native-reanimated';
 import { ActivePowerUp } from '../../game/powerups/types';
 import { useGameStore } from '../../state/gameStore';
 import { useMatchClock } from '../match/useMatchClock';
-import { DeathSkin } from '../powerups/deathSkin';
+import { DeathSkin, RespawnDrop } from '../powerups/deathSkin';
 import { POWER_UP_SKINS, SKIN_ACTIVATING_MS, SKIN_EXIT_TIMEOUT_MS } from '../powerups/skins';
 import { SkinPhase } from '../powerups/types';
 import { BoardJelly, SlideEnabledContext } from './BoardJelly';
@@ -49,9 +49,18 @@ interface BoardEntityProps {
   clock: SharedValue<number>;
 }
 
-// Draws one entity: through its power-up's skin while one runs (and while that skin animates back
-// out), through the death skin while it waits to respawn, and as the normal jelly otherwise.
-function BoardEntity({ entity, cellSize, clock }: BoardEntityProps) {
+// Draws one entity, dropping it back in each time it respawns.
+function BoardEntity(props: BoardEntityProps) {
+  return (
+    <RespawnDrop entity={props.entity} cellSize={props.cellSize}>
+      <EntityLook {...props} />
+    </RespawnDrop>
+  );
+}
+
+// How one entity looks: through its power-up's skin while one runs (and while that skin animates
+// back out), through the death skin while it waits to respawn, and as the normal jelly otherwise.
+function EntityLook({ entity, cellSize, clock }: BoardEntityProps) {
   const { activePowerUp } = entity;
   const [expiring, onExitDone] = useExpiringPowerUp(activePowerUp);
   const shown = activePowerUp ?? expiring;

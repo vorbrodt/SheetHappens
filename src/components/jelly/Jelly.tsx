@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
+import { forwardRef, ReactNode, useEffect, useImperativeHandle, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, {
   cancelAnimation,
@@ -22,6 +22,8 @@ interface JellyProps {
   // 'lottie' swaps the body and its idle wobble for the jelly-idle asset (KAN-16 prototype).
   // Move and paint reactions stay procedural either way.
   renderer?: JellyRenderer;
+  // Drawn over the body and face, squashing and stretching along with them.
+  children?: ReactNode;
 }
 
 const IDLE_SQUISH = 0.035;
@@ -36,7 +38,7 @@ export const JELLY_MOVE_TRAVEL_MS = 150;
 const MOVE_LANDING_MS = 90;
 
 export const Jelly = forwardRef<JellyHandle, JellyProps>(function Jelly(
-  { color, size, showFace = true, renderer = 'procedural' },
+  { color, size, showFace = true, renderer = 'procedural', children },
   ref
 ) {
   const idleT = useSharedValue(0);
@@ -118,6 +120,7 @@ export const Jelly = forwardRef<JellyHandle, JellyProps>(function Jelly(
     >
       {lottieBody && <JellyLottieBody color={color} />}
       {showFace && <JellyFace size={size} direction={lastDirection} />}
+      {children}
     </Animated.View>
   );
 });

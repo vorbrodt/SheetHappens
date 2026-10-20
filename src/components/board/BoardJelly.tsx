@@ -1,4 +1,4 @@
-import { createContext, Ref, RefObject, useContext, useEffect, useRef } from 'react';
+import { createContext, ReactNode, Ref, RefObject, useContext, useEffect, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -12,6 +12,11 @@ export const SlideEnabledContext = createContext<RefObject<boolean>>({ current: 
 
 const SLIDE_TIMING = { duration: JELLY_MOVE_TRAVEL_MS, easing: Easing.inOut(Easing.quad) };
 
+// How big a jelly is drawn in a cell of `cellSize`.
+export function jellySizeFor(cellSize: number): number {
+  return cellSize * 0.8;
+}
+
 interface BoardJellyProps {
   jellyRef?: Ref<JellyHandle>;
   color: string;
@@ -20,9 +25,25 @@ interface BoardJellyProps {
 }
 
 // An entity's normal look: one jelly on its cell, sliding along with each move.
-export function BoardJelly({ jellyRef, color, position: { row, col }, cellSize }: BoardJellyProps) {
+export function BoardJelly({ jellyRef, color, position, cellSize }: BoardJellyProps) {
+  return (
+    <BoardSlide position={position} cellSize={cellSize}>
+      <Jelly ref={jellyRef} color={color} size={jellySizeFor(cellSize)} />
+    </BoardSlide>
+  );
+}
+
+interface BoardSlideProps {
+  position: Position;
+  cellSize: number;
+  // Laid out in a jellySizeFor(cellSize) box centered on the cell.
+  children: ReactNode;
+}
+
+// Holds a jelly-sized box on the entity's cell, sliding it along with each move.
+export function BoardSlide({ position: { row, col }, cellSize, children }: BoardSlideProps) {
   const slideEnabled = useContext(SlideEnabledContext);
-  const jellySize = cellSize * 0.8;
+  const jellySize = jellySizeFor(cellSize);
   const jellyInset = (cellSize - jellySize) / 2;
   const x = useSharedValue(col * cellSize + jellyInset);
   const y = useSharedValue(row * cellSize + jellyInset);
@@ -50,8 +71,8 @@ export function BoardJelly({ jellyRef, color, position: { row, col }, cellSize }
   }));
 
   return (
-    <Animated.View style={[styles.entity, animatedStyle]}>
-      <Jelly ref={jellyRef} color={color} size={jellySize} />
+    <Animated.View style={[styles.entity, { width: jellySize, height: jellySize }, animatedStyle]}>
+      {children}
     </Animated.View>
   );
 }
