@@ -16,14 +16,16 @@ import { Direction, Entity, MatchEvent, MatchState, PlayerId } from './types';
 const PLAYER = 'player';
 const FRAME_MS = 16;
 
-// Never called: matches without bots don't draw random numbers.
+// Never called: matches without bots or pickups don't draw random numbers.
 const noRandom: Rng = () => {
   throw new Error('unexpected random draw');
 };
 
-// A match with `botCount` bots, run past the countdown so it is playing at match time 0.
+// A match with `botCount` bots, run past the countdown so it is playing at match time 0. No
+// pickups ever spawn in it.
 function playingMatch(botCount = 0, rng: Rng = noRandom, boardSize = BOARD_SIZE): MatchState {
-  return step(createMatch({ durationSeconds: 60, botCount, boardSize }, PLAYER), COUNTDOWN_MS, rng);
+  const match = createMatch({ durationSeconds: 60, botCount, boardSize }, PLAYER);
+  return step({ ...match, nextSpawnAt: Infinity }, COUNTDOWN_MS, rng);
 }
 
 function entity(state: MatchState, id: PlayerId): Entity {
@@ -40,11 +42,12 @@ function moveInput(direction: Direction, entityId = PLAYER) {
 
 // Moves the entity at the current match time, as a swipe would.
 function swipe(state: MatchState, direction: Direction, entityId = PLAYER): MatchState {
-  return applyInput(state, moveInput(direction, entityId), state.elapsedMs);
+  return applyInput(state, moveInput(direction, entityId), state.elapsedMs, noRandom);
 }
 
 function count(events: MatchEvent[], type: MatchEvent['type'], entityId?: PlayerId) {
-  return events.filter((e) => e.type === type && (entityId === undefined || e.entityId === entityId)).length;
+  return events.filter((e) => e.type === type && (entityId === undefined || ('entityId' in e && e.entityId === entityId)))
+    .length;
 }
 
 // Steps `ms` of play in `frameMs` frames, collecting every event along the way.
@@ -117,7 +120,7 @@ describe('board size', () => {
 
   it('lets the player reach the far edge of a bigger board and no further', () => {
     let state = playingMatch(0, noRandom, 16);
-    for (let i = 0; i < 20; i++) state = applyInput(state, moveInput('right'), i * PLAYER_MOVE_INTERVAL_MS);
+    for (let i = 0; i < 20; i++) state = applyInput(state, moveInput('right'), i * PLAYER_MOVE_INTERVAL_MS, noRandom);
 
     expect(entity(state, PLAYER).position).toEqual({ row: 0, col: 15 });
     expect(state.grid[0][15].owner).toBe(PLAYER);
@@ -138,16 +141,16 @@ describe('board size', () => {
 describe('applyInput', () => {
   it('ignores input outside play', () => {
     const counting = createMatch({ durationSeconds: 60, botCount: 0, boardSize: BOARD_SIZE }, PLAYER);
-    expect(applyInput(counting, moveInput('right'), 0)).toBe(counting);
+    expect(applyInput(counting, moveInput('right'), 0, noRandom)).toBe(counting);
 
     const paused = setPaused(playingMatch(), true);
-    expect(applyInput(paused, moveInput('right'), 0)).toBe(paused);
+    expect(applyInput(paused, moveInput('right'), 0, noRandom)).toBe(paused);
   });
 
   it('ignores unknown entities and blocked moves', () => {
     const state = playingMatch();
-    expect(applyInput(state, moveInput('right', 'nobody'), 0)).toBe(state);
-    expect(applyInput(state, moveInput('up'), 0)).toBe(state);
+    expect(applyInput(state, moveInput('right', 'nobody'), 0, noRandom)).toBe(state);
+    expect(applyInput(state, moveInput('up'), 0, noRandom)).toBe(state);
   });
 
   it('reports a move and the paint on the cell moved onto as events', () => {
@@ -231,18 +234,18 @@ describe('dwell painting', () => {
 describe('per-entity effects', () => {
   describe('moveIntervalMs', () => {
     it('rejects a move sooner than the interval after the last one', () => {
-      let state = applyInput(playingMatch(), moveInput('right'), 0);
-      const early = applyInput(state, moveInput('right'), PLAYER_MOVE_INTERVAL_MS - 1);
+      let state = applyInput(playingMatch(), moveInput('right'), 0, noRandom);
+      const early = applyInput(state, moveInput('right'), PLAYER_MOVE_INTERVAL_MS - 1, noRandom);
       expect(early).toBe(state);
 
-      state = applyInput(state, moveInput('right'), PLAYER_MOVE_INTERVAL_MS);
+      state = applyInput(state, moveInput('right'), PLAYER_MOVE_INTERVAL_MS, noRandom);
       expect(entity(state, PLAYER).position).toEqual({ row: 0, col: 2 });
     });
 
     it('lets a faster entity move sooner', () => {
       let state = withEntity(playingMatch(), PLAYER, { moveIntervalMs: 50 });
-      state = applyInput(state, moveInput('right'), 0);
-      state = applyInput(state, moveInput('right'), 50);
+      state = applyInput(state, moveInput('right'), 0, noRandom);
+      state = applyInput(state, moveInput('right'), 50, noRandom);
       expect(entity(state, PLAYER).position).toEqual({ row: 0, col: 2 });
     });
 
@@ -277,7 +280,7 @@ describe('per-entity effects', () => {
   describe('frozenUntil', () => {
     it('ignores the entity’s moves and skips its paints until it thaws', () => {
       let state = withEntity(playingMatch(), PLAYER, { frozenUntil: 1_000 });
-      expect(applyInput(state, moveInput('right'), 999)).toBe(state);
+      expect(applyInput(state, moveInput('right'), 999, noRandom)).toBe(state);
       state = step(state, 999, noRandom);
       expect(state.grid[0][0].intensity).toBe(1);
 
@@ -293,7 +296,7 @@ describe('per-entity effects', () => {
         frozenUntil: 1_000,
       });
       const { state, events } = run(step(frozen, COUNTDOWN_MS, createRng(1)), 999, createRng(1));
-      expect(events.filter((e) => e.entityId === 'bot-1')).toEqual([]);
+      expect(events.filter((e) => 'entityId' in e && e.entityId === 'bot-1')).toEqual([]);
       expect(state.grid.flat().some((cell) => cell.owner === 'bot-1')).toBe(false);
 
       expect(count(run(state, 100, createRng(1)).events, 'painted', 'bot-1')).toBeGreaterThan(0);

@@ -1,3 +1,5 @@
+import { ActivePowerUp, Pickup, PowerUpKind } from './powerups/types';
+
 export type Direction = 'up' | 'down' | 'left' | 'right';
 
 export type PlayerId = string;
@@ -23,6 +25,27 @@ export interface Entity {
   // When this entity next paints the cell it is standing on. Entering a cell paints it straight
   // away and pushes this to PAINT_DWELL_MS later; standing still repeats it every PAINT_DWELL_MS.
   dwellPaintAt: number;
+  // Power-up slots, in order. Using one empties it; a pickup fills the first empty one.
+  inventory: (PowerUpKind | null)[];
+  // The power-up running right now. Only one at a time, and no slot can be used while it runs.
+  activePowerUp: ActivePowerUp | null;
+  // The cells the entity covers, as offsets from `position`. Just its own cell by default.
+  footprint: Position[];
+  // How many cells one move covers.
+  moveStep: number;
+  // Whether touching it kills.
+  lethal: boolean;
+  canTeleport: boolean;
+  // A ghost passes through others and isn't blocking, killable or collecting.
+  ghost: boolean;
+  // Whose paint it lays down; its own id by default.
+  paintsAs: PlayerId;
+  // The entity whose power-up summoned this one, or null for a regular entity.
+  summonedBy: PlayerId | null;
+  // When a summoned entity is removed from the match, or null to stay for good.
+  expiresAt: number | null;
+  // When a dead entity comes back; null while it's alive.
+  respawnAt: number | null;
 }
 
 export interface Cell {
@@ -46,12 +69,23 @@ export interface BotTimers {
   nextMoveAt: number;
 }
 
-export type MatchInput = { type: 'move'; entityId: PlayerId; direction: Direction };
+export type MatchInput =
+  | { type: 'move'; entityId: PlayerId; direction: Direction }
+  | { type: 'usePowerUp'; entityId: PlayerId; slot: 0 | 1 };
 
 // What an input or step changed, so the UI can animate it.
 export type MatchEvent =
   | { type: 'moved'; entityId: PlayerId; direction: Direction }
-  | { type: 'painted'; entityId: PlayerId };
+  | { type: 'painted'; entityId: PlayerId }
+  | { type: 'pickupSpawned'; pickup: Pickup }
+  | { type: 'pickupDespawned'; pickupId: string }
+  | { type: 'pickedUp'; entityId: PlayerId; kind: PowerUpKind; slot: number; pickupId: string }
+  | { type: 'powerUpActivated'; entityId: PlayerId; kind: PowerUpKind }
+  | { type: 'powerUpRefused'; entityId: PlayerId; slot: number }
+  | { type: 'powerUpExpired'; entityId: PlayerId; kind: PowerUpKind }
+  | { type: 'killed'; entityId: PlayerId; by: PlayerId }
+  | { type: 'respawned'; entityId: PlayerId }
+  | { type: 'teleported'; entityId: PlayerId; from: Position; to: Position };
 
 export interface MatchState {
   grid: Grid;
@@ -64,6 +98,10 @@ export interface MatchState {
   remainingMs: number;
   // The match clock: ms of play so far, frozen during the countdown and while paused.
   elapsedMs: number;
+  // Power-ups lying on the board.
+  pickups: Pickup[];
+  // When the next wave of pickups spawns, on the match clock; null until play starts.
+  nextSpawnAt: number | null;
   // What the call that produced this state did. Each call starts a fresh list.
   events: MatchEvent[];
 }

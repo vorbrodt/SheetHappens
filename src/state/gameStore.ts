@@ -27,6 +27,8 @@ interface GameStore {
   dispatch: (input: MatchInput) => void;
   // Holds (or, with null, releases) the local player's swipe; a new direction moves straight away.
   holdDirection: (direction: Direction | null) => void;
+  // Uses the power-up in one of the local player's slots.
+  usePowerUp: (slot: 0 | 1) => void;
   // Advances the match by wall-clock time; called once per frame by the game loop.
   step: (deltaMs: number) => void;
   // Sets or clears one reason to hold the match; it resumes when the last one is cleared.
@@ -58,13 +60,17 @@ export const useGameStore = create<GameStore>()((set, get) => {
 
     dispatch: (input) => {
       const { match } = get();
-      setMatch(applyInput(match, input, match.elapsedMs));
+      setMatch(applyInput(match, input, match.elapsedMs, Math.random));
     },
 
     holdDirection: (direction) => {
       if (direction === get().heldDirection) return;
       set({ heldDirection: direction });
       if (direction) get().dispatch({ type: 'move', entityId: get().localPlayerId, direction });
+    },
+
+    usePowerUp: (slot) => {
+      get().dispatch({ type: 'usePowerUp', entityId: get().localPlayerId, slot });
     },
 
     step: (deltaMs) => {

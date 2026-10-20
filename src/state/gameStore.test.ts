@@ -1,4 +1,5 @@
 import { COUNTDOWN_MS, PAINT_DWELL_MS } from '../game/engine';
+import { updateEntity } from '../game/rules';
 import { useGameStore } from './gameStore';
 
 const store = () => useGameStore.getState();
@@ -166,6 +167,17 @@ describe('frozen input', () => {
     store().dispatch({ type: 'move', entityId: store().localPlayerId, direction: 'right' });
     expect(localPlayer().position).toEqual({ row: 0, col: 1 });
     expect(match().grid[0][1]).toEqual({ owner: store().localPlayerId, intensity: 1 });
+  });
+});
+
+describe('usePowerUp', () => {
+  it('uses the power-up in one of the local player’s slots', () => {
+    startMatch();
+    useGameStore.setState({ match: updateEntity(match(), store().localPlayerId, { inventory: ['speedster', 'jellyport'] }) });
+
+    store().usePowerUp(1);
+    expect(localPlayer().inventory).toEqual(['speedster', null]);
+    expect(localPlayer().activePowerUp).toEqual({ kind: 'jellyport', startedAt: 0, endsAt: 8_000 });
   });
 });
 

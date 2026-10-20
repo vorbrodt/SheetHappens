@@ -15,7 +15,7 @@ export function useMatchAnimations(getJelly: (id: PlayerId) => JellyHandle | nul
         if (state.match.events === prev.match.events) return;
         for (const event of state.match.events) {
           if (event.type === 'moved') getJelly(event.entityId)?.playMove(event.direction);
-          else getJelly(event.entityId)?.playPaint();
+          else if (event.type === 'painted') getJelly(event.entityId)?.playPaint();
         }
       }),
     [getJelly]
