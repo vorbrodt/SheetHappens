@@ -22,7 +22,7 @@ describe('paintSplashes', () => {
 
   it('ignores moves and unknown entities', () => {
     const match = matchWith([
-      { type: 'moved', entityId: 'player', direction: 'up' },
+      { type: 'moved', entityId: 'player', direction: 'up', distance: 1 },
       { type: 'painted', entityId: 'ghost' },
     ]);
     expect(paintSplashes(match)).toEqual([]);
@@ -31,7 +31,7 @@ describe('paintSplashes', () => {
   it('places a paint made before a later move in the same step on the cell it was made in', () => {
     const match = matchWith([
       { type: 'painted', entityId: 'player' },
-      { type: 'moved', entityId: 'player', direction: 'right' },
+      { type: 'moved', entityId: 'player', direction: 'right', distance: 1 },
       { type: 'painted', entityId: 'player' },
     ]);
     expect(paintSplashes(match).map((s) => s.position)).toEqual([

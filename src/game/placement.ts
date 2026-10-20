@@ -1,5 +1,5 @@
-import { BOARD_SIZE } from './rules';
-import { Position } from './types';
+import { BOARD_SIZE, cellsFree, footprintCells } from './rules';
+import { Entity, PlayerId, Position } from './types';
 
 export const PLAYER_START: Position = { row: 0, col: 0 };
 
@@ -28,4 +28,34 @@ export function getStartingPositions(
     player: PLAYER_START,
     bots: botStartOrder(boardSize).slice(0, botCount),
   };
+}
+
+// The board's four corners: where dead entities come back.
+export function getCorners(boardSize: number = BOARD_SIZE): Position[] {
+  const last = boardSize - 1;
+  return [
+    { row: 0, col: 0 },
+    { row: 0, col: last },
+    { row: last, col: 0 },
+    { row: last, col: last },
+  ];
+}
+
+/**
+ * Where to put the entity's position so that `footprint` covers `cell`: trying the footprint's
+ * offsets in order, the first that keeps every cell on the board and clear of every solid entity
+ * other than the entity itself. Null when none does.
+ */
+export function findPlacement(
+  entities: Entity[],
+  entityId: PlayerId,
+  footprint: Position[],
+  cell: Position,
+  boardSize: number = BOARD_SIZE
+): Position | null {
+  for (const offset of footprint) {
+    const position = { row: cell.row - offset.row, col: cell.col - offset.col };
+    if (cellsFree(entities, footprintCells(position, footprint), boardSize, entityId)) return position;
+  }
+  return null;
 }

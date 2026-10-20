@@ -1,4 +1,6 @@
-import { getStartingPositions } from './placement';
+import { createEntity } from './engine';
+import { findPlacement, getCorners, getStartingPositions } from './placement';
+import { Position } from './types';
 
 describe('getStartingPositions', () => {
   it('returns exactly botCount bot positions with no collisions among entities', () => {
@@ -40,5 +42,48 @@ describe('getStartingPositions', () => {
     const { bots } = getStartingPositions(0);
 
     expect(bots).toHaveLength(0);
+  });
+});
+
+describe('getCorners', () => {
+  it('returns the four corners of the board', () => {
+    expect(getCorners(12)).toEqual([
+      { row: 0, col: 0 },
+      { row: 0, col: 11 },
+      { row: 11, col: 0 },
+      { row: 11, col: 11 },
+    ]);
+  });
+});
+
+describe('findPlacement', () => {
+  const BLOCK_2X2: Position[] = [
+    { row: 0, col: 0 },
+    { row: 0, col: 1 },
+    { row: 1, col: 0 },
+    { row: 1, col: 1 },
+  ];
+  const at = (id: string, row: number, col: number) => createEntity({ id, color: '#000000', position: { row, col } });
+
+  it('puts the footprint so it covers the cell, ignoring the entity itself', () => {
+    expect(findPlacement([at('me', 3, 3)], 'me', BLOCK_2X2, { row: 3, col: 3 })).toEqual({ row: 3, col: 3 });
+  });
+
+  it('shifts the footprint off the board edge and away from others', () => {
+    expect(findPlacement([], 'me', BLOCK_2X2, { row: 7, col: 7 })).toEqual({ row: 6, col: 6 });
+    expect(findPlacement([at('other', 3, 4)], 'me', BLOCK_2X2, { row: 3, col: 3 })).toEqual({ row: 3, col: 2 });
+  });
+
+  it('ignores ghosts and the dead', () => {
+    const others = [
+      { ...at('ghost', 3, 4), ghost: true },
+      { ...at('dead', 4, 3), respawnAt: 5_000 },
+    ];
+    expect(findPlacement(others, 'me', BLOCK_2X2, { row: 3, col: 3 })).toEqual({ row: 3, col: 3 });
+  });
+
+  it('returns null when no placement fits', () => {
+    const others = [at('a', 2, 3), at('b', 4, 3), at('c', 3, 2), at('d', 3, 4)];
+    expect(findPlacement(others, 'me', BLOCK_2X2, { row: 3, col: 3 })).toBeNull();
   });
 });

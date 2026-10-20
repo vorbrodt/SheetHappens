@@ -268,3 +268,37 @@ describe('rankEntities', () => {
     ]);
   });
 });
+
+describe('paint with footprints', () => {
+  it('paints every given cell once, in the paintsAs color', () => {
+    const ghost = { ...makeEntities([{ id: 'ghost' }])[0], paintsAs: 'owner' };
+    const cells = [
+      { row: 0, col: 0 },
+      { row: 0, col: 1 },
+      { row: 0, col: 1 },
+      { row: 2, col: 3 },
+    ];
+
+    const grid = paint(createEmptyGrid(), [ghost], 'ghost', 1, cells);
+
+    expect(grid[0][0]).toEqual({ owner: 'owner', intensity: 1 });
+    expect(grid[0][1]).toEqual({ owner: 'owner', intensity: 1 });
+    expect(grid[2][3]).toEqual({ owner: 'owner', intensity: 1 });
+    expect(cellsOwned(grid, 'owner')).toBe(3);
+  });
+
+  it('paints the whole footprint by default', () => {
+    const block = {
+      ...makeEntities([{ id: 'a', position: { row: 4, col: 4 } }])[0],
+      footprint: [
+        { row: 0, col: 0 },
+        { row: 1, col: 0 },
+      ],
+    };
+
+    const grid = paint(createEmptyGrid(), [block], 'a');
+
+    expect(cellsOwned(grid, 'a')).toBe(2);
+    expect(grid[5][4].owner).toBe('a');
+  });
+});

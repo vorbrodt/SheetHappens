@@ -39,6 +39,26 @@ describe('chooseBotDirection', () => {
     expect(chooseBotDirection(entities, 'bot')).toBeNull();
   });
 
+  it('lets a ghost walk through others, held back only by the board edge', () => {
+    const entities = makeEntities([
+      { id: 'ghost', position: { row: 0, col: 0 } },
+      { id: 'a', position: { row: 1, col: 0 } },
+      { id: 'b', position: { row: 0, col: 1 } },
+    ]).map((e) => (e.id === 'ghost' ? { ...e, ghost: true } : e));
+
+    expect(chooseBotDirection(entities, 'ghost', () => 0)).toBe('down');
+    expect(chooseBotDirection(entities, 'ghost', () => 0.999)).toBe('right');
+  });
+
+  it('steers clear of lethal entities', () => {
+    const entities = makeEntities([
+      { id: 'bot', position: { row: 0, col: 0 } },
+      { id: 'lethal', position: { row: 1, col: 0 } },
+    ]).map((e) => (e.id === 'lethal' ? { ...e, lethal: true } : e));
+
+    for (const r of [0, 0.5, 0.999]) expect(chooseBotDirection(entities, 'bot', () => r)).toBe('right');
+  });
+
   it('uses the board size it is given', () => {
     const entities = makeEntities([{ id: 'bot', position: { row: 7, col: 7 } }]);
     const picks = (boardSize: number) =>

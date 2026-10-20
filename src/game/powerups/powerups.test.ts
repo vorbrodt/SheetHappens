@@ -73,6 +73,7 @@ describe('createEntity', () => {
       moveStep: 1,
       lethal: false,
       canTeleport: false,
+      lastTeleportAt: null,
       ghost: false,
       paintsAs: 'a',
       summonedBy: null,
@@ -196,7 +197,7 @@ describe('picking up', () => {
     expect(player(state).inventory).toEqual(['speedster', null]);
     expect(state.pickups).toEqual([]);
     expect(state.events).toEqual([
-      { type: 'moved', entityId: PLAYER, direction: 'right' },
+      { type: 'moved', entityId: PLAYER, direction: 'right', distance: 1 },
       { type: 'painted', entityId: PLAYER },
       { type: 'pickedUp', entityId: PLAYER, kind: 'speedster', slot: 0, pickupId: 'speedster-0-1' },
     ]);
