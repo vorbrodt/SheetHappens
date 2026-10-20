@@ -1,6 +1,7 @@
 import { ComponentType } from 'react';
 import Svg from 'react-native-svg';
 
+import { PowerUpKind } from '../../game/powerups/types';
 import { GetInLineIcon } from './icons/GetInLineIcon';
 import { GhostArmyIcon } from './icons/GhostArmyIcon';
 import { JellyGoneBadIcon } from './icons/JellyGoneBadIcon';
@@ -9,24 +10,6 @@ import { JellysaurusIcon } from './icons/JellysaurusIcon';
 import { ICON_VIEWBOX } from './icons/parts';
 import { SpeedsterIcon } from './icons/SpeedsterIcon';
 
-// Local stand-in; phase 8B switches to importing PowerUpKind from src/game/powerups/types.ts.
-export type PowerUpKind =
-  | 'jellysaurus'
-  | 'getInLine'
-  | 'ghostArmy'
-  | 'speedster'
-  | 'jellyGoneBad'
-  | 'jellyport';
-
-export const POWER_UP_ICON_KINDS: PowerUpKind[] = [
-  'jellysaurus',
-  'getInLine',
-  'ghostArmy',
-  'speedster',
-  'jellyGoneBad',
-  'jellyport',
-];
-
 const ICONS: Record<PowerUpKind, ComponentType> = {
   jellysaurus: JellysaurusIcon,
   getInLine: GetInLineIcon,
@@ -34,6 +17,16 @@ const ICONS: Record<PowerUpKind, ComponentType> = {
   speedster: SpeedsterIcon,
   jellyGoneBad: JellyGoneBadIcon,
   jellyport: JellyportIcon,
+};
+
+// What each power-up is called on screen and to screen readers.
+export const POWER_UP_NAMES: Record<PowerUpKind, string> = {
+  jellysaurus: 'Jellysaurus',
+  getInLine: 'Get in Line',
+  ghostArmy: 'Ghost Army',
+  speedster: 'Speedster',
+  jellyGoneBad: 'Jelly Gone Bad',
+  jellyport: 'Jellyport',
 };
 
 interface PowerUpIconProps {
