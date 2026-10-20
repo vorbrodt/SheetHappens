@@ -19,6 +19,7 @@ import { PowerUpSlots, PowerUpSlotsHandle } from '../components/hud/PowerUpSlots
 import { JellyHandle } from '../components/jelly/types';
 import { CountdownOverlay } from '../components/match/CountdownOverlay';
 import { GameOverOverlay } from '../components/match/GameOverOverlay';
+import { RespawnOverlay } from '../components/match/RespawnOverlay';
 import { useGameLoop } from '../components/match/useGameLoop';
 import { useMatchAnimations } from '../components/match/useMatchAnimations';
 import { MatchParams, parseMatchParams } from '../components/menu/matchConfig';
@@ -247,6 +248,7 @@ export default function GameScreen() {
       {/* Outside the swipe surface, so tapping a slot never starts a swipe. */}
       {player && <PowerUpSlots ref={powerUpSlots} color={player.color} />}
       <CountdownOverlay />
+      <RespawnOverlay />
       {pauseOpen && <PauseDialog onResume={resume} onLeave={leave} />}
       {gameOver && <GameOverOverlay onDone={showResults} />}
     </View>

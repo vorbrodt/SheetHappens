@@ -1,4 +1,4 @@
-import { BOT_MOVE_INTERVAL_MS } from './bots';
+import { BOT_MOVE_INTERVAL_MS, BOT_POWER_UP_DELAY_MIN_MS, BOT_POWER_UP_DELAY_MAX_MS } from './bots';
 import {
   applyInput,
   COUNTDOWN_MS,
@@ -15,6 +15,7 @@ import {
   summon,
   TELEPORT_COOLDOWN_MS,
 } from './engine';
+import { POWER_UPS } from './powerups/registry';
 import { Pickup } from './powerups/types';
 import { createRng, Rng } from './random';
 import { BOARD_SIZE, MAX_INTENSITY, rankEntities } from './rules';
@@ -495,6 +496,7 @@ describe('power-up mechanics', () => {
       ]);
       expect(entity(state, PLAYER).position).toEqual({ row: 0, col: 1 });
       expect(entity(state, RIVAL).respawnAt).toBe(1_000 + RESPAWN_MS);
+      expect(entity(state, PLAYER).kills).toBe(1);
     });
 
     it('kills whoever runs into a lethal entity, which stays put', () => {
@@ -505,6 +507,8 @@ describe('power-up mechanics', () => {
       expect(entity(state, PLAYER).respawnAt).toBe(1_000 + RESPAWN_MS);
       expect(entity(state, RIVAL).position).toEqual({ row: 0, col: 1 });
       expect(state.grid[0][1].owner).toBe(null);
+      expect(entity(state, RIVAL).kills).toBe(1);
+      expect(entity(state, PLAYER).kills).toBe(0);
     });
 
     it('lets two lethal entities block each other', () => {
@@ -601,5 +605,98 @@ describe('power-up mechanics', () => {
       const second = teleportTo(first, { row: 2, col: 2 }, 1_000 + TELEPORT_COOLDOWN_MS);
       expect(entity(second, PLAYER).position).toEqual({ row: 2, col: 2 });
     });
+  });
+});
+
+describe('bot power-ups', () => {
+  const BOT = 'bot';
+  const always =
+    (r: number): Rng =>
+    () =>
+      r;
+
+  // Adds a bot that never moves, so only its power-up and teleport timers act.
+  function withBot(state: MatchState, patch: Partial<Entity> = {}): MatchState {
+    const bot = createEntity({ id: BOT, color: '#3b82f6', position: { row: 4, col: 4 }, ...patch });
+    return { ...state, entities: [...state.entities, bot], bots: { ...state.bots, [BOT]: { nextMoveAt: Infinity } } };
+  }
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('uses a power-up it carries 1–4s after getting it', () => {
+    const carrying = withBot(playingMatch(), { inventory: ['speedster', null] });
+    expect(step(carrying, 0, always(0.999)).bots[BOT].usePowerUpAt).toBeLessThanOrEqual(BOT_POWER_UP_DELAY_MAX_MS);
+    let state = step(carrying, 0, always(0));
+    expect(state.bots[BOT].usePowerUpAt).toBe(BOT_POWER_UP_DELAY_MIN_MS);
+
+    state = run(state, BOT_POWER_UP_DELAY_MIN_MS - 1, always(0)).state;
+    expect(entity(state, BOT).activePowerUp).toBeNull();
+
+    const { state: used, events } = run(state, 1, always(0));
+    expect(events).toContainEqual({ type: 'powerUpActivated', entityId: BOT, kind: 'speedster' });
+    expect(entity(used, BOT).inventory).toEqual([null, null]);
+    expect(used.bots[BOT].usePowerUpAt).toBeUndefined();
+  });
+
+  it('keeps its power-up timer while it moves', () => {
+    const start = withBot(playingMatch(), { inventory: ['speedster', null], moveIntervalMs: 100 });
+    const moving = { ...start, bots: { [BOT]: { nextMoveAt: 0 } } };
+    const { state, events } = run(moving, BOT_POWER_UP_DELAY_MIN_MS, always(0));
+
+    expect(count(events, 'moved', BOT)).toBeGreaterThan(0);
+    expect(entity(state, BOT).activePowerUp?.kind).toBe('speedster');
+  });
+
+  it('waits for the running power-up to end before using the next', () => {
+    const active = { kind: 'speedster', startedAt: 0, endsAt: 8_000 } as const;
+    const start = withBot(playingMatch(), { inventory: ['jellyport', null], activePowerUp: active });
+    const { state, events } = run(start, 8_000, always(0));
+
+    expect(count(events, 'powerUpRefused')).toBe(0);
+    expect(entity(state, BOT).activePowerUp).toEqual({ kind: 'jellyport', startedAt: 8_000, endsAt: 16_000 });
+  });
+
+  it('falls back to its other slot when one is refused', () => {
+    jest.spyOn(POWER_UPS.jellysaurus, 'canActivate').mockReturnValue(false);
+    const start = withBot(playingMatch(), { inventory: ['jellysaurus', 'speedster'] });
+    const { state, events } = run(start, BOT_POWER_UP_DELAY_MIN_MS, always(0));
+
+    expect(count(events, 'powerUpRefused')).toBe(0);
+    expect(entity(state, BOT)).toMatchObject({ inventory: ['jellysaurus', null], activePowerUp: { kind: 'speedster' } });
+    expect(state.bots[BOT].usePowerUpAt).toBe(2 * BOT_POWER_UP_DELAY_MIN_MS);
+  });
+
+  it('teleports to a random free cell every BOT_TELEPORT_INTERVAL_MS while Jellyport runs', () => {
+    const start = withBot(playingMatch(), { inventory: ['jellyport', null] });
+    const { state, events } = run(start, 10_000, always(0));
+
+    // Used at 1s and running until 9s: a teleport every second from 2s to 8s. A draw of 0 picks the
+    // first free cell in reading order.
+    expect(count(events, 'teleported', BOT)).toBe(7);
+    expect(events.find((e) => e.type === 'teleported')).toEqual({
+      type: 'teleported',
+      entityId: BOT,
+      from: { row: 4, col: 4 },
+      to: { row: 0, col: 1 },
+    });
+    expect(entity(state, BOT).canTeleport).toBe(false);
+    expect(state.bots[BOT].teleportAt).toBeUndefined();
+  });
+
+  it('collects pickups it walks onto, then uses them', () => {
+    const pickups: Pickup[] = [{ id: 'p', kind: 'speedster', position: { row: 4, col: 5 }, spawnedAt: 0, expiresAt: 20_000 }];
+    let state = withBot({ ...playingMatch(), pickups });
+    state = applyInput(state, moveInput('right', BOT), 0, noRandom);
+    expect(entity(state, BOT).inventory).toEqual(['speedster', null]);
+
+    state = run(state, BOT_POWER_UP_DELAY_MIN_MS, always(0)).state;
+    expect(entity(state, BOT).activePowerUp?.kind).toBe('speedster');
+  });
+
+  it('leaves the player’s power-ups to the player', () => {
+    const state = step(withEntity(playingMatch(), PLAYER, { inventory: ['speedster', null] }), 0, noRandom);
+    expect(state.bots).toEqual({});
   });
 });
