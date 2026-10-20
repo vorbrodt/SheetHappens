@@ -4,7 +4,8 @@ import { router } from 'expo-router';
 
 import { Jelly } from '../components/jelly/Jelly';
 import { Direction, JellyHandle, JellyRenderer } from '../components/jelly/types';
-import { POWER_UP_ICON_KINDS, PowerUpIcon } from '../components/powerups/PowerUpIcon';
+import { PowerUpIcon } from '../components/powerups/PowerUpIcon';
+import { POWER_UP_KINDS } from '../game/powerups/registry';
 
 const PREVIEW_COLORS = ['#EC4899', '#2563EB', '#DC2626', '#16A34A'];
 const JELLY_SIZE = 72;
@@ -51,7 +52,7 @@ export default function JellyPreviewScreen() {
         <Text style={styles.rendererLabel}>Power-up icons (KAN-33)</Text>
         {POWER_UP_ICON_SIZES.map((size) => (
           <View key={size} style={styles.iconRow}>
-            {POWER_UP_ICON_KINDS.map((kind) => (
+            {POWER_UP_KINDS.map((kind) => (
               <View key={kind} style={[styles.iconCell, { width: size + 12, height: size + 12 }]}>
                 <PowerUpIcon kind={kind} size={size} />
               </View>
