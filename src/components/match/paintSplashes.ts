@@ -25,7 +25,10 @@ export function paintSplashes(match: MatchState): PaintSplash[] {
 
     if (event.type === 'moved') {
       const delta = DIRECTION_DELTAS[event.direction];
-      positions.set(event.entityId, { row: position.row - delta.row, col: position.col - delta.col });
+      positions.set(event.entityId, {
+        row: position.row - delta.row * event.distance,
+        col: position.col - delta.col * event.distance,
+      });
     } else {
       splashes.push({ position, color });
     }

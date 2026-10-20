@@ -85,15 +85,15 @@ function collects(state: MatchState, entity: Entity): boolean {
 }
 
 /**
- * Has the entity take every pickup under any cell it covers, each into its first empty slot. Call
- * it whenever an entity arrives on new cells, however it got there. Pickups that don't fit stay
- * on the board. The returned events are its own.
+ * Has the entity take every pickup under any cell it covers or `passed` on the way, each into its
+ * first empty slot. Call it whenever an entity arrives on new cells, however it got there. Pickups
+ * that don't fit stay on the board. The returned events are its own.
  */
-export function collectPickups(state: MatchState, entityId: PlayerId): MatchState {
+export function collectPickups(state: MatchState, entityId: PlayerId, passed: Position[] = []): MatchState {
   const entity = state.entities.find((e) => e.id === entityId);
   if (!entity || !collects(state, entity)) return { ...state, events: [] };
 
-  const cells = entityCells(entity);
+  const cells = [...passed, ...entityCells(entity)];
   const inventory = [...entity.inventory];
   let pickups = state.pickups;
   const events: MatchEvent[] = [];

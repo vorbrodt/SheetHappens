@@ -181,6 +181,24 @@ describe('usePowerUp', () => {
   });
 });
 
+describe('teleport', () => {
+  it('teleports the local player when it can', () => {
+    startMatch();
+    store().teleport({ row: 4, col: 4 });
+    expect(localPlayer().position).toEqual({ row: 0, col: 0 });
+
+    useGameStore.setState({ match: updateEntity(match(), store().localPlayerId, { canTeleport: true }) });
+    store().teleport({ row: 4, col: 4 });
+    expect(localPlayer().position).toEqual({ row: 4, col: 4 });
+    expect(match().events[0]).toEqual({
+      type: 'teleported',
+      entityId: store().localPlayerId,
+      from: { row: 0, col: 0 },
+      to: { row: 4, col: 4 },
+    });
+  });
+});
+
 describe('dwell painting', () => {
   it('paints the starting cell as play starts, then every PAINT_DWELL_MS, but not while paused', () => {
     startMatch();

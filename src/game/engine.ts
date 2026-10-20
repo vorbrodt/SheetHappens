@@ -1,10 +1,30 @@
 import { BOT_MOVE_INTERVAL_MS, chooseBotDirection } from './bots';
-import { getStartingPositions } from './placement';
+import { findPlacement, getCorners, getStartingPositions } from './placement';
 import { activatePowerUp, expirePowerUp } from './powerups/lifecycle';
 import { collectPickups, despawnPickup, INVENTORY_SLOTS, spawnDelay, spawnWave } from './powerups/pickups';
 import { Rng } from './random';
-import { BOARD_SIZE, createEmptyGrid, move, paint } from './rules';
-import { BotTimers, Direction, Entity, MatchConfig, MatchEvent, MatchInput, MatchState, PlayerId } from './types';
+import {
+  BOARD_SIZE,
+  cellsFree,
+  createEmptyGrid,
+  entityCells,
+  footprintCells,
+  paint,
+  planMove,
+  samePosition,
+  updateEntity,
+} from './rules';
+import {
+  BotTimers,
+  Direction,
+  Entity,
+  MatchConfig,
+  MatchEvent,
+  MatchInput,
+  MatchState,
+  PlayerId,
+  Position,
+} from './types';
 
 export const DEFAULT_CONFIG: MatchConfig = { durationSeconds: 30, botCount: 2, boardSize: BOARD_SIZE };
 
@@ -16,6 +36,18 @@ export const PLAYER_MOVE_INTERVAL_MS = 200;
 
 // How long an entity stands on a cell for each paint after the one it gets for entering it.
 export const PAINT_DWELL_MS = 500;
+
+// How long a killed entity stays off the board.
+export const RESPAWN_MS = 5_000;
+
+// How long a respawn waits to try again when every corner is taken.
+export const RESPAWN_RETRY_MS = 100;
+
+// The shortest gap allowed between two of an entity's teleports.
+export const TELEPORT_COOLDOWN_MS = 500;
+
+// A summoned ghost's moveIntervalMs.
+export const GHOST_MOVE_INTERVAL_MS = 400;
 
 const PLAYER_COLOR = '#EC4899';
 // Kept clear of the player's pink and the neutral cell gray.
@@ -45,6 +77,7 @@ export function createEntity(entity: NewEntity): Entity {
     moveStep: 1,
     lethal: false,
     canTeleport: false,
+    lastTeleportAt: null,
     ghost: false,
     paintsAs: entity.id,
     summonedBy: null,
@@ -87,43 +120,165 @@ export function moveReadyAt(entity: Entity): number {
 }
 
 /**
+ * Has the entity arrive on `cells`, however it got there: paints each of them once, restarts its
+ * dwell timer and takes the pickups under them and under every cell it now covers. The returned
+ * events are its own.
+ */
+function enter(state: MatchState, entityId: PlayerId, cells: Position[], now: number): MatchState {
+  const entities = state.entities.map((e) => (e.id === entityId ? { ...e, dwellPaintAt: now + PAINT_DWELL_MS } : e));
+  const entity = entities.find((e) => e.id === entityId)!;
+  const painted = { ...state, grid: paint(state.grid, entities, entityId, entity.paintMultiplier, cells), entities };
+  const collected = collectPickups(painted, entityId, cells);
+  return { ...collected, events: [{ type: 'painted', entityId }, ...collected.events] };
+}
+
+// Takes the entity off the board until RESPAWN_MS from now. Its paint stays. The returned events
+// are its own.
+function kill(state: MatchState, entityId: PlayerId, by: PlayerId, now: number): MatchState {
+  return {
+    ...updateEntity(state, entityId, { respawnAt: now + RESPAWN_MS }),
+    events: [{ type: 'killed', entityId, by }],
+  };
+}
+
+/**
+ * Brings a dead entity back at `now` on a random free corner (its footprint covering the corner)
+ * and has it enter the cells it lands on. With every corner taken it tries again RESPAWN_RETRY_MS
+ * later. The returned events are its own.
+ */
+function respawn(state: MatchState, entityId: PlayerId, now: number, rng: Rng): MatchState {
+  const entity = state.entities.find((e) => e.id === entityId);
+  if (!entity) return state;
+
+  const size = state.grid.length;
+  const placements = getCorners(size)
+    .map((corner) => findPlacement(state.entities, entityId, entity.footprint, corner, size))
+    .filter((position) => position !== null);
+  if (placements.length === 0) {
+    return { ...updateEntity(state, entityId, { respawnAt: now + RESPAWN_RETRY_MS }), events: [] };
+  }
+
+  const position = placements[Math.floor(rng() * placements.length)];
+  const back = updateEntity(state, entityId, { position, respawnAt: null });
+  const entered = enter(back, entityId, footprintCells(position, entity.footprint), now);
+  return { ...entered, events: [{ type: 'respawned', entityId }, ...entered.events] };
+}
+
+// Teleports the entity to `target`, if it can teleport, its cooldown has passed and its footprint
+// fits there. That counts as entering every cell it lands on. The returned events are its own.
+function teleport(state: MatchState, entity: Entity, target: Position, now: number): MatchState {
+  if (!entity.canTeleport) return state;
+  if (entity.lastTeleportAt !== null && now < entity.lastTeleportAt + TELEPORT_COOLDOWN_MS) return state;
+  const cells = footprintCells(target, entity.footprint);
+  if (!cellsFree(state.entities, cells, state.grid.length, entity.id)) return state;
+
+  const moved = updateEntity(state, entity.id, { position: target, lastTeleportAt: now });
+  const entered = enter(moved, entity.id, cells, now);
+  return {
+    ...entered,
+    events: [{ type: 'teleported', entityId: entity.id, from: entity.position, to: target }, ...entered.events],
+  };
+}
+
+/**
  * Applies one entity's input at `now` on the match clock. Inputs are ignored — the same state
- * comes back — unless the match is playing and the entity exists, is alive and is not frozen. A
- * move is also ignored when it comes sooner than the entity's moveIntervalMs after its last move,
- * or is blocked; otherwise it paints the cell moved onto, restarts the entity's dwell timer there
- * and picks up whatever pickups it landed on. Using a power-up is up to activatePowerUp.
+ * comes back — unless the match is playing and the entity exists, is alive and is not frozen.
+ *
+ * A move is also ignored when it comes sooner than the entity's moveIntervalMs after its last
+ * move, or is blocked straight away (see planMove). Otherwise the entity travels as far as it can,
+ * entering every cell it passes over: each is painted and its pickups taken, and the dwell timer
+ * restarts where it ends up. A lethal mover kills whoever it runs into on the way, and a mover that
+ * runs into a lethal entity dies there. Teleports and power-ups are up to teleport and
+ * activatePowerUp.
  */
 export function applyInput(state: MatchState, input: MatchInput, now: number, rng: Rng): MatchState {
   if (state.status !== 'playing') return state;
   const entity = state.entities.find((e) => e.id === input.entityId);
   if (!entity || entity.respawnAt !== null || now < entity.frozenUntil) return state;
   if (input.type === 'usePowerUp') return activatePowerUp(state, entity.id, input.slot, now, rng);
+  if (input.type === 'teleport') return teleport(state, entity, input.target, now);
 
   if (now < moveReadyAt(entity)) return state;
-  const moved = move(state.entities, entity.id, input.direction, state.grid.length);
-  if (moved === state.entities) return state;
-  const entities = moved.map((e) =>
-    e.id === entity.id ? { ...e, lastMoveAt: now, dwellPaintAt: now + PAINT_DWELL_MS } : e
-  );
-  const collected = collectPickups(
-    { ...state, grid: paint(state.grid, entities, entity.id, entity.paintMultiplier), entities },
-    entity.id
-  );
-  return {
-    ...collected,
-    events: [
-      { type: 'moved', entityId: entity.id, direction: input.direction },
-      { type: 'painted', entityId: entity.id },
-      ...collected.events,
-    ],
+  const plan = planMove(state.entities, entity.id, input.direction, state.grid.length);
+  if (!plan || (plan.distance === 0 && plan.killedBy === null)) return state;
+
+  let next = state;
+  const events: MatchEvent[] = [];
+  const apply = (after: MatchState) => {
+    events.push(...after.events);
+    next = after;
   };
+
+  if (plan.distance > 0) {
+    events.push({ type: 'moved', entityId: entity.id, direction: input.direction, distance: plan.distance });
+    for (const victimId of plan.kills) apply(kill(next, victimId, entity.id, now));
+    const moved = updateEntity(next, entity.id, { position: plan.position, lastMoveAt: now });
+    apply(enter(moved, entity.id, plan.entered, now));
+  }
+  if (plan.killedBy !== null) apply(kill(next, entity.id, plan.killedBy, now));
+  return { ...next, events };
+}
+
+/**
+ * Summons `count` ghosts for the owner at the current match time, each on a random cell no living
+ * entity covers among those nearest the owner. They wear the owner's color, paint as it does and
+ * are moved by the bot AI every GHOST_MOVE_INTERVAL_MS, starting with a paint where they appear.
+ * They leave at `expiresAt`, or stay for good with null. Summons that find no free cell are skipped.
+ */
+export function summon(
+  state: MatchState,
+  ownerId: PlayerId,
+  count: number,
+  rng: Rng,
+  expiresAt: number | null = null
+): MatchState {
+  const owner = state.entities.find((e) => e.id === ownerId);
+  if (!owner) return state;
+
+  const now = state.elapsedMs;
+  const size = state.grid.length;
+  const ownerCells = entityCells(owner);
+  const distance = (cell: Position) =>
+    Math.min(...ownerCells.map((o) => Math.abs(o.row - cell.row) + Math.abs(o.col - cell.col)));
+  let entities = state.entities;
+  const bots = { ...state.bots };
+
+  for (let i = 0; i < count; i++) {
+    const taken = entities.filter((e) => e.respawnAt === null).flatMap(entityCells);
+    const free: Position[] = [];
+    for (let row = 0; row < size; row++) {
+      for (let col = 0; col < size; col++) {
+        if (!taken.some((cell) => samePosition(cell, { row, col }))) free.push({ row, col });
+      }
+    }
+    if (free.length === 0) break;
+
+    const nearest = Math.min(...free.map(distance));
+    const candidates = free.filter((cell) => distance(cell) === nearest);
+    const ghost = createEntity({
+      id: `${ownerId}-summon-${now}-${i}`,
+      color: owner.color,
+      position: candidates[Math.floor(rng() * candidates.length)],
+      moveIntervalMs: GHOST_MOVE_INTERVAL_MS,
+      dwellPaintAt: now,
+      ghost: true,
+      paintsAs: owner.paintsAs,
+      summonedBy: ownerId,
+      expiresAt,
+    });
+    entities = [...entities, ghost];
+    bots[ghost.id] = { nextMoveAt: now + GHOST_MOVE_INTERVAL_MS };
+  }
+
+  return { ...state, entities, bots };
 }
 
 /**
  * Runs everything that came due by the match clock, in time order: power-ups running out, summoned
- * entities leaving, pickups despawning, waves of pickups spawning, every entity's dwell paints,
- * every bot's moves (a random legal direction every moveIntervalMs; a boxed-in bot waits for its
- * next turn) and the moves of every held direction, from `from` at the earliest. Each action is
+ * entities leaving, dead entities respawning, pickups despawning, waves of pickups spawning, every
+ * living entity's dwell paints, every living bot's moves (a random legal direction every
+ * moveIntervalMs; a boxed-in bot waits for its next turn) and the moves of every held direction,
+ * from `from` at the earliest. Each action is
  * stamped with the time it was due rather than the end of the step, so entities keep their exact
  * pace whatever the step size. A paint due at the same time as a move goes first, since the entity
  * did stand there the full PAINT_DWELL_MS, and anything ending or spawning at that time goes
@@ -180,6 +335,13 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
         };
       }
     }
+    for (const entity of next.entities) {
+      const { respawnAt } = entity;
+      if (respawnAt !== null && respawnAt < dueAt) {
+        dueAt = respawnAt;
+        act = () => apply(respawn(next, entity.id, respawnAt, rng));
+      }
+    }
     for (const pickup of next.pickups) {
       if (pickup.expiresAt < dueAt) {
         dueAt = pickup.expiresAt;
@@ -192,7 +354,7 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
       act = () => apply(spawnWave(next, nextSpawnAt, rng));
     }
     for (const entity of next.entities) {
-      if (entity.dwellPaintAt < dueAt) {
+      if (entity.respawnAt === null && entity.dwellPaintAt < dueAt) {
         dueAt = entity.dwellPaintAt;
         act = () => dwellPaint(entity, entity.dwellPaintAt);
       }
@@ -204,7 +366,8 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
         const at = timers.nextMoveAt;
         dueAt = at;
         act = () => {
-          tryMove(entity.id, chooseBotDirection(next.entities, entity.id, rng, next.grid.length), at);
+          const alive = entity.respawnAt === null;
+          tryMove(entity.id, alive ? chooseBotDirection(next.entities, entity.id, rng, next.grid.length) : null, at);
           // At least 1ms, so a zero interval can't spin forever.
           bots[entity.id] = { nextMoveAt: at + Math.max(1, entity.moveIntervalMs) };
         };

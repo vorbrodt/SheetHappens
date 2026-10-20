@@ -2,16 +2,23 @@ import { BOT_MOVE_INTERVAL_MS } from './bots';
 import {
   applyInput,
   COUNTDOWN_MS,
+  createEntity,
   createMatch,
+  GHOST_MOVE_INTERVAL_MS,
   HeldDirections,
   PAINT_DWELL_MS,
   PLAYER_MOVE_INTERVAL_MS,
+  RESPAWN_MS,
+  RESPAWN_RETRY_MS,
   setPaused,
   step,
+  summon,
+  TELEPORT_COOLDOWN_MS,
 } from './engine';
+import { Pickup } from './powerups/types';
 import { createRng, Rng } from './random';
 import { BOARD_SIZE, MAX_INTENSITY, rankEntities } from './rules';
-import { Direction, Entity, MatchEvent, MatchState, PlayerId } from './types';
+import { Direction, Entity, MatchEvent, MatchState, PlayerId, Position } from './types';
 
 const PLAYER = 'player';
 const FRAME_MS = 16;
@@ -156,7 +163,7 @@ describe('applyInput', () => {
   it('reports a move and the paint on the cell moved onto as events', () => {
     const state = swipe(playingMatch(), 'right');
     expect(state.events).toEqual([
-      { type: 'moved', entityId: PLAYER, direction: 'right' },
+      { type: 'moved', entityId: PLAYER, direction: 'right', distance: 1 },
       { type: 'painted', entityId: PLAYER },
     ]);
   });
@@ -326,5 +333,273 @@ describe('step', () => {
     // Bots paint at the player's rate: the player, standing still, paints at 500 and 1000ms.
     expect(count(byFrames.events, 'painted', PLAYER)).toBe(Math.floor(1_200 / PAINT_DWELL_MS));
     expect(inOneGo.state).toEqual({ ...byFrames.state, events: inOneGo.state.events });
+  });
+});
+
+describe('power-up mechanics', () => {
+  const RIVAL = 'rival';
+  // Footprints, as offsets from the entity's position.
+  const BLOCK_2X2 = [
+    { row: 0, col: 0 },
+    { row: 0, col: 1 },
+    { row: 1, col: 0 },
+    { row: 1, col: 1 },
+  ];
+  const COLUMN_1X4 = [0, 1, 2, 3].map((row) => ({ row, col: 0 }));
+
+  // Adds an entity with no bot timers, so it only moves when told to.
+  function withRival(state: MatchState, position: Position, patch: Partial<Entity> = {}, id = RIVAL): MatchState {
+    return { ...state, entities: [...state.entities, createEntity({ id, color: '#3b82f6', position, ...patch })] };
+  }
+
+  function intensities(state: MatchState, cells: [number, number][]) {
+    return cells.map(([row, col]) => state.grid[row][col].intensity);
+  }
+
+  function teleportTo(state: MatchState, target: Position, at = state.elapsedMs): MatchState {
+    return applyInput(state, { type: 'teleport', entityId: PLAYER, target }, at, noRandom);
+  }
+
+  describe('footprint', () => {
+    it('moves a 2x2 block as one and paints only the cells it newly covers', () => {
+      let state = swipe(withEntity(playingMatch(), PLAYER, { footprint: BLOCK_2X2 }), 'right');
+
+      expect(entity(state, PLAYER).position).toEqual({ row: 0, col: 1 });
+      expect(state.events[0]).toEqual({ type: 'moved', entityId: PLAYER, direction: 'right', distance: 1 });
+      // (0,0) kept its paint from the start of play; (0,1) and (1,1) were already covered.
+      expect(intensities(state, [[0, 0], [0, 1], [1, 1], [0, 2], [1, 2]])).toEqual([1, 0, 0, 1, 1]);
+
+      // The dwell paint covers the whole footprint.
+      state = step(state, PAINT_DWELL_MS, noRandom);
+      expect(intensities(state, [[0, 1], [0, 2], [1, 1], [1, 2]])).toEqual([1, 2, 1, 2]);
+    });
+
+    it('blocks a 2x2 move when any destination cell is taken or off the board', () => {
+      const block = withEntity(playingMatch(), PLAYER, { footprint: BLOCK_2X2 });
+
+      const occupied = withRival(block, { row: 1, col: 2 });
+      expect(swipe(occupied, 'right')).toBe(occupied);
+      expect(swipe(block, 'up')).toBe(block);
+
+      const atEdge = withEntity(block, PLAYER, { position: { row: 0, col: BOARD_SIZE - 2 } });
+      expect(swipe(atEdge, 'right')).toBe(atEdge);
+    });
+
+    it('moves a 1x4 column along its length and sideways, blocked by any of its cells', () => {
+      const column = withEntity(playingMatch(), PLAYER, { footprint: COLUMN_1X4 });
+
+      const down = swipe(column, 'down');
+      expect(entity(down, PLAYER).position).toEqual({ row: 1, col: 0 });
+      expect(intensities(down, [[1, 0], [4, 0]])).toEqual([0, 1]);
+
+      const right = swipe(column, 'right');
+      expect(intensities(right, [[0, 1], [1, 1], [2, 1], [3, 1]])).toEqual([1, 1, 1, 1]);
+
+      const blocked = withRival(column, { row: 3, col: 1 });
+      expect(swipe(blocked, 'right')).toBe(blocked);
+      const bottom = withEntity(column, PLAYER, { position: { row: BOARD_SIZE - 4, col: 0 } });
+      expect(swipe(bottom, 'down')).toBe(bottom);
+    });
+
+    it('blocks others from every cell it covers', () => {
+      const state = withRival(withEntity(playingMatch(), PLAYER, { footprint: BLOCK_2X2 }), { row: 2, col: 1 });
+      expect(swipe(state, 'up', RIVAL)).toBe(state);
+    });
+  });
+
+  describe('moveStep', () => {
+    it('travels moveStep cells, entering every one', () => {
+      const pickups: Pickup[] = [
+        { id: 'p', kind: 'speedster', position: { row: 0, col: 1 }, spawnedAt: 0, expiresAt: Infinity },
+      ];
+      const state = swipe({ ...withEntity(playingMatch(), PLAYER, { moveStep: 2 }), pickups }, 'right');
+
+      expect(entity(state, PLAYER).position).toEqual({ row: 0, col: 2 });
+      expect(state.events[0]).toEqual({ type: 'moved', entityId: PLAYER, direction: 'right', distance: 2 });
+      expect(intensities(state, [[0, 1], [0, 2]])).toEqual([1, 1]);
+      expect(entity(state, PLAYER).inventory).toEqual(['speedster', null]);
+    });
+
+    it('stops early at the first blocked cell', () => {
+      const twoStep = withEntity(playingMatch(), PLAYER, { moveStep: 2 });
+
+      const blocked = swipe(withRival(twoStep, { row: 0, col: 2 }), 'right');
+      expect(entity(blocked, PLAYER).position).toEqual({ row: 0, col: 1 });
+      expect(blocked.events[0]).toMatchObject({ type: 'moved', distance: 1 });
+
+      const edge = swipe(withEntity(twoStep, PLAYER, { position: { row: 0, col: BOARD_SIZE - 2 } }), 'right');
+      expect(entity(edge, PLAYER).position).toEqual({ row: 0, col: BOARD_SIZE - 1 });
+    });
+  });
+
+  describe('ghosts', () => {
+    const ghost: Partial<Entity> = { ghost: true, paintsAs: PLAYER, summonedBy: PLAYER };
+
+    it('share cells with others in both directions', () => {
+      const state = withRival(playingMatch(), { row: 0, col: 1 }, ghost, 'ghost');
+
+      const intoGhost = swipe(state, 'right');
+      expect(entity(intoGhost, PLAYER).position).toEqual({ row: 0, col: 1 });
+
+      const ghostInto = swipe(state, 'left', 'ghost');
+      expect(entity(ghostInto, 'ghost').position).toEqual({ row: 0, col: 0 });
+    });
+
+    it('paint for their owner', () => {
+      let state = withRival(playingMatch(), { row: 4, col: 4 }, ghost, 'ghost');
+      state = step(swipe(state, 'right', 'ghost'), PAINT_DWELL_MS, noRandom);
+
+      expect(state.grid[4][5]).toEqual({ owner: PLAYER, intensity: 2 });
+      expect(state.grid.flat().some((cell) => cell.owner === 'ghost')).toBe(false);
+    });
+
+    it('can’t be killed', () => {
+      const state = swipe(withRival(withEntity(playingMatch(), PLAYER, { lethal: true }), { row: 0, col: 1 }, ghost, 'ghost'), 'right');
+      expect(count(state.events, 'killed')).toBe(0);
+      expect(entity(state, 'ghost').respawnAt).toBeNull();
+    });
+
+    it('are summoned next to the owner and wander as bots, painting for it until they expire', () => {
+      const rng = createRng(5);
+      const start = step(playingMatch(), 1_000, noRandom);
+      let state = summon(start, PLAYER, 3, rng, 4_000);
+      const ghosts = state.entities.filter((e) => e.summonedBy === PLAYER);
+
+      expect(ghosts).toHaveLength(3);
+      expect(ghosts.every((g) => g.ghost && g.paintsAs === PLAYER && g.moveIntervalMs === GHOST_MOVE_INTERVAL_MS)).toBe(true);
+      // The two cells next to the corner first, then one two steps away.
+      const keys = ghosts.map((g) => `${g.position.row},${g.position.col}`);
+      expect(keys.slice(0, 2).sort()).toEqual(['0,1', '1,0']);
+      expect(['0,2', '1,1', '2,0']).toContain(keys[2]);
+      for (const g of ghosts) expect(state.bots[g.id]).toEqual({ nextMoveAt: 1_000 + GHOST_MOVE_INTERVAL_MS });
+
+      const { state: later, events } = run(state, 2_000, rng);
+      state = later;
+      for (const g of ghosts) expect(count(events, 'moved', g.id)).toBe(2_000 / GHOST_MOVE_INTERVAL_MS);
+      expect(state.grid.flat().every((cell) => cell.owner === null || cell.owner === PLAYER)).toBe(true);
+
+      state = run(state, 1_000, rng).state;
+      expect(state.entities.map((e) => e.id)).toEqual([PLAYER]);
+    });
+  });
+
+  describe('lethal', () => {
+    it('kills whoever a lethal mover runs into and takes the cell', () => {
+      const start = withRival(withEntity(step(playingMatch(), 1_000, noRandom), PLAYER, { lethal: true }), { row: 0, col: 1 });
+      const state = swipe(start, 'right');
+
+      expect(state.events).toEqual([
+        { type: 'moved', entityId: PLAYER, direction: 'right', distance: 1 },
+        { type: 'killed', entityId: RIVAL, by: PLAYER },
+        { type: 'painted', entityId: PLAYER },
+      ]);
+      expect(entity(state, PLAYER).position).toEqual({ row: 0, col: 1 });
+      expect(entity(state, RIVAL).respawnAt).toBe(1_000 + RESPAWN_MS);
+    });
+
+    it('kills whoever runs into a lethal entity, which stays put', () => {
+      const start = withRival(step(playingMatch(), 1_000, noRandom), { row: 0, col: 1 }, { lethal: true });
+      const state = swipe(start, 'right');
+
+      expect(state.events).toEqual([{ type: 'killed', entityId: PLAYER, by: RIVAL }]);
+      expect(entity(state, PLAYER).respawnAt).toBe(1_000 + RESPAWN_MS);
+      expect(entity(state, RIVAL).position).toEqual({ row: 0, col: 1 });
+      expect(state.grid[0][1].owner).toBe(null);
+    });
+
+    it('lets two lethal entities block each other', () => {
+      const state = withRival(withEntity(playingMatch(), PLAYER, { lethal: true }), { row: 0, col: 1 }, { lethal: true });
+      expect(swipe(state, 'right')).toBe(state);
+    });
+
+    it('takes the dead off the board until they respawn, leaving their paint', () => {
+      // The rival paints its starting cell, steps up next to the player and is run over.
+      let state = step(withRival(withEntity(playingMatch(), PLAYER, { lethal: true }), { row: 1, col: 1 }), 0, noRandom);
+      state = swipe(swipe(state, 'up', RIVAL), 'right');
+      expect(entity(state, RIVAL).respawnAt).toBe(RESPAWN_MS);
+
+      const { state: dead, events } = run(state, RESPAWN_MS - 1, noRandom);
+      expect(count(events, 'painted', RIVAL)).toBe(0);
+      expect(dead.grid[1][1]).toEqual({ owner: RIVAL, intensity: 1 });
+      expect(swipe(dead, 'down', RIVAL)).toBe(dead);
+
+      // Where it died is free to walk back onto.
+      const away = swipe(dead, 'left');
+      const back = applyInput(away, moveInput('right'), away.elapsedMs + PLAYER_MOVE_INTERVAL_MS, noRandom);
+      expect(entity(back, PLAYER).position).toEqual(entity(dead, RIVAL).position);
+    });
+
+    it('respawns the dead on a random free corner after RESPAWN_MS, painting it', () => {
+      const start = withRival(withEntity(playingMatch(), PLAYER, { lethal: true }), { row: 0, col: 1 });
+      // Every corner is free, and 0.999 picks the last.
+      let state = swipe(start, 'right');
+      state = step(state, RESPAWN_MS - 1, () => 0.999);
+      expect(entity(state, RIVAL).respawnAt).toBe(RESPAWN_MS);
+
+      state = step(state, 1, () => 0.999);
+      expect(state.events.slice(0, 2)).toEqual([
+        { type: 'respawned', entityId: RIVAL },
+        { type: 'painted', entityId: RIVAL },
+      ]);
+      expect(entity(state, RIVAL)).toMatchObject({ position: { row: BOARD_SIZE - 1, col: BOARD_SIZE - 1 }, respawnAt: null });
+      expect(state.grid[BOARD_SIZE - 1][BOARD_SIZE - 1]).toEqual({ owner: RIVAL, intensity: 1 });
+    });
+
+    it('waits for a corner to free up when every one is taken', () => {
+      const last = BOARD_SIZE - 1;
+      let state = withRival(playingMatch(), { row: 0, col: 1 }, { lethal: true });
+      state = withRival(state, { row: 1, col: 0 }, {}, 'a');
+      state = withRival(state, { row: 0, col: last }, {}, 'b');
+      state = withRival(state, { row: last, col: 0 }, {}, 'c');
+      state = withRival(state, { row: last, col: last }, {}, 'd');
+      // The player dies on the lethal rival and 'a' takes its corner.
+      state = swipe(swipe(state, 'right'), 'up', 'a');
+      expect(entity(state, PLAYER).respawnAt).toBe(RESPAWN_MS);
+
+      state = step(state, RESPAWN_MS, () => 0);
+      expect(entity(state, PLAYER).respawnAt).toBe(RESPAWN_MS + RESPAWN_RETRY_MS);
+
+      state = step(swipe(state, 'left', 'd'), RESPAWN_RETRY_MS, () => 0);
+      expect(entity(state, PLAYER)).toMatchObject({ position: { row: last, col: last }, respawnAt: null });
+    });
+  });
+
+  describe('teleport', () => {
+    const teleporter = () => withEntity(step(playingMatch(), 1_000, noRandom), PLAYER, { canTeleport: true });
+
+    it('moves the entity to a free target and enters it', () => {
+      const state = teleportTo(teleporter(), { row: 5, col: 3 });
+
+      expect(entity(state, PLAYER)).toMatchObject({ position: { row: 5, col: 3 }, lastTeleportAt: 1_000 });
+      expect(state.events).toEqual([
+        { type: 'teleported', entityId: PLAYER, from: { row: 0, col: 0 }, to: { row: 5, col: 3 } },
+        { type: 'painted', entityId: PLAYER },
+      ]);
+      expect(state.grid[5][3]).toEqual({ owner: PLAYER, intensity: 1 });
+      expect(entity(state, PLAYER).dwellPaintAt).toBe(1_000 + PAINT_DWELL_MS);
+    });
+
+    it('is refused without canTeleport, off the board or onto a taken cell', () => {
+      const plain = step(playingMatch(), 1_000, noRandom);
+      expect(teleportTo(plain, { row: 5, col: 3 })).toBe(plain);
+
+      const state = withRival(teleporter(), { row: 5, col: 4 });
+      expect(teleportTo(state, { row: 5, col: BOARD_SIZE })).toBe(state);
+      expect(teleportTo(state, { row: 5, col: 4 })).toBe(state);
+
+      // A 2x2 needs every one of its cells free.
+      const block = withEntity(state, PLAYER, { footprint: BLOCK_2X2 });
+      expect(teleportTo(block, { row: 4, col: 3 })).toBe(block);
+      expect(teleportTo(block, { row: BOARD_SIZE - 1, col: 0 })).toBe(block);
+      expect(entity(teleportTo(block, { row: 2, col: 2 }), PLAYER).position).toEqual({ row: 2, col: 2 });
+    });
+
+    it('waits TELEPORT_COOLDOWN_MS between teleports', () => {
+      const first = teleportTo(teleporter(), { row: 5, col: 3 });
+
+      expect(teleportTo(first, { row: 2, col: 2 }, 1_000 + TELEPORT_COOLDOWN_MS - 1)).toBe(first);
+      const second = teleportTo(first, { row: 2, col: 2 }, 1_000 + TELEPORT_COOLDOWN_MS);
+      expect(entity(second, PLAYER).position).toEqual({ row: 2, col: 2 });
+    });
   });
 });

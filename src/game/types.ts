@@ -36,6 +36,8 @@ export interface Entity {
   // Whether touching it kills.
   lethal: boolean;
   canTeleport: boolean;
+  // When this entity last teleported, or null if it has not yet this match.
+  lastTeleportAt: number | null;
   // A ghost passes through others and isn't blocking, killable or collecting.
   ghost: boolean;
   // Whose paint it lays down; its own id by default.
@@ -71,11 +73,14 @@ export interface BotTimers {
 
 export type MatchInput =
   | { type: 'move'; entityId: PlayerId; direction: Direction }
-  | { type: 'usePowerUp'; entityId: PlayerId; slot: 0 | 1 };
+  | { type: 'usePowerUp'; entityId: PlayerId; slot: 0 | 1 }
+  // `target` is where the entity's position lands; its footprint is laid out from there.
+  | { type: 'teleport'; entityId: PlayerId; target: Position };
 
 // What an input or step changed, so the UI can animate it.
 export type MatchEvent =
-  | { type: 'moved'; entityId: PlayerId; direction: Direction }
+  // `distance` is how many cells the move covered.
+  | { type: 'moved'; entityId: PlayerId; direction: Direction; distance: number }
   | { type: 'painted'; entityId: PlayerId }
   | { type: 'pickupSpawned'; pickup: Pickup }
   | { type: 'pickupDespawned'; pickupId: string }

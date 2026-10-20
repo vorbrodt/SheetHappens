@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import { applyInput, createMatch, DEFAULT_CONFIG, setPaused, step } from '../game/engine';
-import { Direction, MatchConfig, MatchInput, MatchState, PlayerId } from '../game/types';
+import { Direction, MatchConfig, MatchInput, MatchState, PlayerId, Position } from '../game/types';
 
 // The id the player on this device plays under in single-player matches.
 const LOCAL_PLAYER_ID: PlayerId = 'player';
@@ -29,6 +29,8 @@ interface GameStore {
   holdDirection: (direction: Direction | null) => void;
   // Uses the power-up in one of the local player's slots.
   usePowerUp: (slot: 0 | 1) => void;
+  // Teleports the local player so its position lands on `target`, if it can teleport there now.
+  teleport: (target: Position) => void;
   // Advances the match by wall-clock time; called once per frame by the game loop.
   step: (deltaMs: number) => void;
   // Sets or clears one reason to hold the match; it resumes when the last one is cleared.
@@ -71,6 +73,10 @@ export const useGameStore = create<GameStore>()((set, get) => {
 
     usePowerUp: (slot) => {
       get().dispatch({ type: 'usePowerUp', entityId: get().localPlayerId, slot });
+    },
+
+    teleport: (target) => {
+      get().dispatch({ type: 'teleport', entityId: get().localPlayerId, target });
     },
 
     step: (deltaMs) => {

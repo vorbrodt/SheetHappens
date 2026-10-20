@@ -6,9 +6,10 @@ import { Direction, Entity, PlayerId } from './types';
 export const BOT_MOVE_INTERVAL_MS = 600;
 
 /**
- * Picks a random direction for the bot. An illegal pick (off-board or occupied) is re-rolled
- * among the remaining legal directions, which is the same as picking uniformly among the legal
- * ones. Returns null when the bot is boxed in and should stay put this tick.
+ * Picks a random direction for the bot. An illegal pick — one that takes it nowhere (see canMove),
+ * including walking into a lethal entity — is re-rolled among the remaining legal directions,
+ * which is the same as picking uniformly among the legal ones. Ghosts are only held back by the
+ * board's edge. Returns null when the bot is boxed in and should stay put this tick.
  */
 export function chooseBotDirection(
   entities: Entity[],
