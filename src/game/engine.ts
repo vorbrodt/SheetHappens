@@ -1,5 +1,7 @@
 import { BOT_MOVE_INTERVAL_MS, chooseBotDirection } from './bots';
 import { getStartingPositions } from './placement';
+import { activatePowerUp, expirePowerUp } from './powerups/lifecycle';
+import { collectPickups, despawnPickup, INVENTORY_SLOTS, spawnDelay, spawnWave } from './powerups/pickups';
 import { Rng } from './random';
 import { BOARD_SIZE, createEmptyGrid, move, paint } from './rules';
 import { BotTimers, Direction, Entity, MatchConfig, MatchEvent, MatchInput, MatchState, PlayerId } from './types';
@@ -27,8 +29,9 @@ type NewEntity = Pick<Entity, 'id' | 'color' | 'position'> & Partial<Entity>;
 // The directions entities are holding a swipe in. Each one's move repeats whenever it comes due.
 export type HeldDirections = Readonly<Record<PlayerId, Direction>>;
 
-// An entity with no effects active: player move speed, single paint, not frozen. Its dwell paint
-// is due at match time 0, so its starting cell counts as entered the moment play starts.
+// An entity with no effects active: player move speed, single paint, not frozen, one cell big,
+// empty power-up slots, painting as itself and alive for good. Its dwell paint is due at match
+// time 0, so its starting cell counts as entered the moment play starts.
 export function createEntity(entity: NewEntity): Entity {
   return {
     moveIntervalMs: PLAYER_MOVE_INTERVAL_MS,
@@ -36,6 +39,17 @@ export function createEntity(entity: NewEntity): Entity {
     frozenUntil: 0,
     lastMoveAt: null,
     dwellPaintAt: 0,
+    inventory: Array.from({ length: INVENTORY_SLOTS }, () => null),
+    activePowerUp: null,
+    footprint: [{ row: 0, col: 0 }],
+    moveStep: 1,
+    lethal: false,
+    canTeleport: false,
+    ghost: false,
+    paintsAs: entity.id,
+    summonedBy: null,
+    expiresAt: null,
+    respawnAt: null,
     ...entity,
   };
 }
@@ -61,6 +75,8 @@ export function createMatch(config: MatchConfig, playerId: PlayerId): MatchState
     countdownMs: COUNTDOWN_MS,
     remainingMs: config.durationSeconds * 1000,
     elapsedMs: 0,
+    pickups: [],
+    nextSpawnAt: null,
     events: NO_EVENTS,
   };
 }
@@ -72,14 +88,16 @@ export function moveReadyAt(entity: Entity): number {
 
 /**
  * Applies one entity's input at `now` on the match clock. Inputs are ignored — the same state
- * comes back — unless the match is playing and the entity exists and is not frozen. A move is
- * also ignored when it comes sooner than the entity's moveIntervalMs after its last move, or is
- * blocked; otherwise it paints the cell moved onto and restarts the entity's dwell timer there.
+ * comes back — unless the match is playing and the entity exists, is alive and is not frozen. A
+ * move is also ignored when it comes sooner than the entity's moveIntervalMs after its last move,
+ * or is blocked; otherwise it paints the cell moved onto, restarts the entity's dwell timer there
+ * and picks up whatever pickups it landed on. Using a power-up is up to activatePowerUp.
  */
-export function applyInput(state: MatchState, input: MatchInput, now: number): MatchState {
+export function applyInput(state: MatchState, input: MatchInput, now: number, rng: Rng): MatchState {
   if (state.status !== 'playing') return state;
   const entity = state.entities.find((e) => e.id === input.entityId);
-  if (!entity || now < entity.frozenUntil) return state;
+  if (!entity || entity.respawnAt !== null || now < entity.frozenUntil) return state;
+  if (input.type === 'usePowerUp') return activatePowerUp(state, entity.id, input.slot, now, rng);
 
   if (now < moveReadyAt(entity)) return state;
   const moved = move(state.entities, entity.id, input.direction, state.grid.length);
@@ -87,24 +105,29 @@ export function applyInput(state: MatchState, input: MatchInput, now: number): M
   const entities = moved.map((e) =>
     e.id === entity.id ? { ...e, lastMoveAt: now, dwellPaintAt: now + PAINT_DWELL_MS } : e
   );
+  const collected = collectPickups(
+    { ...state, grid: paint(state.grid, entities, entity.id, entity.paintMultiplier), entities },
+    entity.id
+  );
   return {
-    ...state,
-    grid: paint(state.grid, entities, entity.id, entity.paintMultiplier),
-    entities,
+    ...collected,
     events: [
       { type: 'moved', entityId: entity.id, direction: input.direction },
       { type: 'painted', entityId: entity.id },
+      ...collected.events,
     ],
   };
 }
 
 /**
- * Runs everything that came due by the match clock, in time order: every entity's dwell paints,
+ * Runs everything that came due by the match clock, in time order: power-ups running out, summoned
+ * entities leaving, pickups despawning, waves of pickups spawning, every entity's dwell paints,
  * every bot's moves (a random legal direction every moveIntervalMs; a boxed-in bot waits for its
  * next turn) and the moves of every held direction, from `from` at the earliest. Each action is
  * stamped with the time it was due rather than the end of the step, so entities keep their exact
  * pace whatever the step size. A paint due at the same time as a move goes first, since the entity
- * did stand there the full PAINT_DWELL_MS. A frozen entity's paints are skipped, not saved up.
+ * did stand there the full PAINT_DWELL_MS, and anything ending or spawning at that time goes
+ * before both. A frozen entity's paints are skipped, not saved up.
  */
 function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections): MatchState {
   let next = state;
@@ -123,11 +146,16 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
     events.push({ type: 'painted', entityId: entity.id });
   };
 
-  const tryMove = (entityId: PlayerId, direction: Direction | null, at: number) => {
-    const after = direction ? applyInput(next, { type: 'move', entityId, direction }, at) : next;
-    if (after === next) return false;
+  // Takes the state after one action, which reports only its own events.
+  const apply = (after: MatchState) => {
     events.push(...after.events);
     next = after;
+  };
+
+  const tryMove = (entityId: PlayerId, direction: Direction | null, at: number) => {
+    const after = direction ? applyInput(next, { type: 'move', entityId, direction }, at, rng) : next;
+    if (after === next) return false;
+    apply(after);
     return true;
   };
 
@@ -135,6 +163,34 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
     let dueAt = Infinity;
     let act: (() => void) | null = null;
 
+    for (const entity of next.entities) {
+      const endsAt = entity.activePowerUp?.endsAt;
+      if (endsAt !== undefined && endsAt < dueAt) {
+        dueAt = endsAt;
+        act = () => apply(expirePowerUp(next, entity.id, endsAt));
+      }
+    }
+    for (const entity of next.entities) {
+      const { expiresAt } = entity;
+      if (expiresAt !== null && expiresAt < dueAt) {
+        dueAt = expiresAt;
+        act = () => {
+          next = { ...next, entities: next.entities.filter((e) => e.id !== entity.id) };
+          delete bots[entity.id];
+        };
+      }
+    }
+    for (const pickup of next.pickups) {
+      if (pickup.expiresAt < dueAt) {
+        dueAt = pickup.expiresAt;
+        act = () => apply(despawnPickup(next, pickup.id));
+      }
+    }
+    const { nextSpawnAt } = next;
+    if (nextSpawnAt !== null && nextSpawnAt < dueAt) {
+      dueAt = nextSpawnAt;
+      act = () => apply(spawnWave(next, nextSpawnAt, rng));
+    }
     for (const entity of next.entities) {
       if (entity.dwellPaintAt < dueAt) {
         dueAt = entity.dwellPaintAt;
@@ -172,8 +228,9 @@ function runDue(state: MatchState, from: number, rng: Rng, held: HeldDirections)
 
 /**
  * Advances the match by `deltaMs` of wall-clock time: runs the pre-match countdown and then starts
- * play; while playing, runs the match clock, the bots, dwell paints and the `held` swipes, and
- * ends the match when the clock hits 0. Whatever is due at match time 0 — every entity's paint on
+ * play, scheduling the first wave of pickups; while playing, runs the match clock, power-ups,
+ * pickups, the bots, dwell paints and the `held` swipes, and ends the match when the clock hits 0,
+ * where any active power-ups just stop. Whatever is due at match time 0 — every entity's paint on
  * its starting cell first — happens in the step that ends the countdown. A paused or ended match
  * comes back unchanged.
  */
@@ -181,7 +238,8 @@ export function step(state: MatchState, deltaMs: number, rng: Rng, held: HeldDir
   if (state.status === 'countdown') {
     const countdownMs = Math.max(0, state.countdownMs - deltaMs);
     if (countdownMs > 0) return { ...state, countdownMs, events: NO_EVENTS };
-    return runDue({ ...state, countdownMs, status: 'playing' }, state.elapsedMs, rng, held);
+    const nextSpawnAt = state.nextSpawnAt ?? state.elapsedMs + spawnDelay(rng);
+    return runDue({ ...state, countdownMs, status: 'playing', nextSpawnAt }, state.elapsedMs, rng, held);
   }
   if (state.status !== 'playing') return state;
 

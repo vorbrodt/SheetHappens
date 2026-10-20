@@ -18,6 +18,7 @@ export function paintSplashes(match: MatchState): PaintSplash[] {
 
   for (let i = match.events.length - 1; i >= 0; i--) {
     const event = match.events[i];
+    if (event.type !== 'moved' && event.type !== 'painted') continue;
     const position = positions.get(event.entityId);
     const color = colors.get(event.entityId);
     if (!position || !color) continue;

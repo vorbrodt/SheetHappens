@@ -1,4 +1,4 @@
-import { Cell, Direction, Entity, Grid, PlayerId, Position } from './types';
+import { Cell, Direction, Entity, Grid, MatchState, PlayerId, Position } from './types';
 
 export const BOARD_SIZE = 8;
 
@@ -18,6 +18,23 @@ export function createEmptyGrid(size: number = BOARD_SIZE): Grid {
   return Array.from({ length: size }, () =>
     Array.from({ length: size }, (): Cell => ({ owner: null, intensity: 0 }))
   );
+}
+
+// Every cell the entity covers: its position plus each footprint offset.
+export function entityCells(entity: Entity): Position[] {
+  return entity.footprint.map((offset) => ({
+    row: entity.position.row + offset.row,
+    col: entity.position.col + offset.col,
+  }));
+}
+
+export function samePosition(a: Position, b: Position): boolean {
+  return a.row === b.row && a.col === b.col;
+}
+
+// The state with one entity's fields changed.
+export function updateEntity(state: MatchState, entityId: PlayerId, patch: Partial<Entity>): MatchState {
+  return { ...state, entities: state.entities.map((e) => (e.id === entityId ? { ...e, ...patch } : e)) };
 }
 
 // The cell the entity would land on, or null if it is off-board or occupied.
